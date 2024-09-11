@@ -1,0 +1,4 @@
+node_modules
+__pycache__
+suofoo_front-app/public
+venv
