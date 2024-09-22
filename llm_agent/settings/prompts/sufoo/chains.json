@@ -1,0 +1,24 @@
+{
+    "process": {
+        "sufoo": {
+            "report": null
+        }
+    },
+    "report": {
+        "type": "prompts",
+        "model": "gpt-4o-mini",
+        "instructions_data": ["normal/report/instructions.txt"],
+        "prompts_data": ["normal/report/prompts.txt"],
+        "input_dict": {"information": null},
+        "output_dict": {"request": "according to the request in information and fill results in detail as many as possible;"},
+        "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
+        "save_history": true,
+        "use_history": true,
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_stream": false,
+        "output_type": "json",
+        "output": "all"
+    }
+}
