@@ -1,3 +1,13 @@
+langchain
+langchain-community
+langchain_openai
+langchain-google-genai
+google-generativeai
+openai==1.5.0
+pytz
+Pillow==10.1.0
+fastapi
+cffi
 locales
 anyio==4.2.0
 certifi
@@ -15,9 +25,7 @@ huggingface-hub==0.19.4
 matplotlib==3.8.2
 numpy==1.26.2
 oauthlib==3.2.0
-openai==1.5.0
 pandas==2.1.4
-Pillow==10.1.0
 python-socketio==5.10.0
 pytz==2023.3.post1
 PyYAML==6.0.1
@@ -26,7 +34,6 @@ requests==2.31.0
 safetensors==0.4.1
 simple-websocket==1.0.0
 tokenizers==0.15.0
-tornado==6.4
 tqdm==4.66.1
 transformers==4.36.1
 typing_extensions==4.9.0

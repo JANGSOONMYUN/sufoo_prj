@@ -6,7 +6,7 @@
     },
     "report": {
         "type": "prompts",
-        "model": "gpt-4o-mini",
+        "model": "gemini-1.5-flash",
         "instructions_data": ["normal/report/instructions.txt"],
         "prompts_data": ["normal/report/prompts.txt"],
         "input_dict": {"information": null},

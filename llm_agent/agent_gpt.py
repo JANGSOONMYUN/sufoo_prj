@@ -16,10 +16,10 @@ from transformers import GPT2Tokenizer
 from get_config import get_api_key
 from get_prompts import load_chain_setting
 from llm_config import GPTConfig
-
 from modules.utils import fix_partial_json, remove_comma_before_bracket
 
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
@@ -32,16 +32,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableWithMessageHistory, ConfigurableFieldSpec
 from langchain_core.runnables.utils import AddableDict
 
-from langchain_community.chat_models import ChatAnthropic
-from langchain_core.documents import Document
-from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain.prompts import PromptTemplate
-from langchain_core.runnables import (
-    RunnableLambda,
-    ConfigurableFieldSpec,
-    RunnablePassthrough,
-)
 
 
 # Define an in-memory chat message history
@@ -79,8 +69,8 @@ class LangChainModule():
         self.keep_input_output_data = {}
         self.stream_storage = {}
         self.is_retrying = False
-        
-        self.init_llm()
+        self.llm = {}
+        self.init_llm(self.config.model)
         
     def params(self, config: GPTConfig):
         self.config = config
@@ -88,18 +78,33 @@ class LangChainModule():
     def clear_data(self):
         self.keep_input_output_data = {}
             
-    def init_llm(self):
-        self.llm = ChatOpenAI(
-            model=self.config.model,
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens_output,
-            timeout=None,
-            max_retries=2,
-            api_key=self.api_info['api_key'], 
-            organization=self.api_info['organization']
-            # base_url="...",
-            # other params...
-        )
+    def init_llm(self, model=None):
+        model = model if model is not None else self.config.model
+        if self.config.company == 'openai':
+            self.llm[model] = ChatOpenAI(
+                model=model,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens_output,
+                timeout=None,
+                max_retries=2,
+                api_key=self.api_info['api_key'], 
+                organization=self.api_info['organization']
+                # base_url="...",
+                # other params...
+            )
+        elif self.config.company == 'google':
+            self.llm[model] = ChatGoogleGenerativeAI(
+                model=model,
+                temperature=self.config.temperature,
+                max_output_tokens=self.config.max_tokens_output,
+                # top_p=0.8,
+                # top_k=40,
+                google_api_key=self.api_info['google_api_key'],
+                # retry_max_attempts=2,  # 현재 지원되지 않음
+                # timeout=None,  # 현재 지원되지 않음
+            )
+        else:
+            assert False, 'company name should be openai or google, in init_llm()'
     
     def get_last_msg(self):
         return self.last_msg
@@ -175,8 +180,10 @@ class LangChainModule():
         return output_parser
     
     # with history
-    def process_chain(self, instructions, prompts, input_dict, output_dict=None, with_history=None):
-        llm = self.llm
+    def process_chain(self, model_name, instructions, prompts, input_dict, output_dict=None, with_history=None):
+        if model_name not in self.llm:
+            self.init_llm(model_name)
+        llm = self.llm[model_name]
         # keys: input_dict.keys()
         sys_msg = SystemMessage(instructions)
         msg_plchldr = MessagesPlaceholder(variable_name="history")
@@ -246,8 +253,10 @@ class LangChainModule():
             return chain_with_history, output_parser
         return chain, output_parser
         
-    def chain_wo_json_output_wo_history(self, instructions, prompts, input_dict):
-        llm = self.llm
+    def chain_wo_json_output_wo_history(self, model_name, instructions, prompts, input_dict):
+        if model_name not in self.llm:
+            self.init_llm(model_name)
+        llm = self.llm[model_name]
         sys_msg = SystemMessagePromptTemplate.from_template(instructions)
         hum_msg =  HumanMessagePromptTemplate.from_template(
             prompts,
@@ -358,7 +367,7 @@ class LangChainModule():
         
         
     
-    def stream_handler(self, result, prompt_chain_keys, output_dict, callback):
+    def stream_handler(self, result, prompt_chain_keys, output_dict, callback, stream_type='str'):
         assert isinstance(callback, dict), 'callback should be dictionary to be handled. in stream_handler'
         assert len(prompt_chain_keys) == 1 , '[ERROR] streaming for multiple chains has not yet implemented, in stream_handler'
         callback_func = callback['func']
@@ -366,6 +375,18 @@ class LangChainModule():
         class_instance = callback['instance']
         
         stream_step = 50
+        
+        
+        i = 0
+        tot_contents = ''
+        special_key_storage = ''
+        if len(prompt_chain_keys) > 1:
+            tot_contents = {}
+            special_key_storage = {}
+            for k in prompt_chain_keys:
+                tot_contents[k] = ''
+                special_key_storage[k] = ''
+                
         
         def _send_stream(i, class_instance, stream_step, content, chain_key, output_dict):
             try:
@@ -377,16 +398,72 @@ class LangChainModule():
             except Exception as e:
                 print(f'{e}, in _send_stream in stream_handler')
         
+        def _find_special_keys(content, acc_str, target_strs):
+            acc_str += content
+            search_start_i = 0
+            for i, tstr in enumerate(target_strs):
+                if tstr not in acc_str[search_start_i:]:
+                    return False, acc_str
+                search_start_i = acc_str.index(tstr) + len(tstr)
+            return True, ''
+        
+        def _replace_special_str(content, acc_str):
+            target_strs = ['n', 't', '"']
+            acc_str += content
+            if '\\' in acc_str:
+                print('(_replace_special_str)acc_str:', acc_str)
+                if '\\n' in acc_str:
+                    return True, acc_str.replace('\\n', '\n')
+                elif '\\t' in acc_str :
+                    return True, acc_str.replace('\\t', '\t')
+                elif '\\"' in acc_str:
+                    return True, acc_str.replace('\\"', '"')
+                elif """\\'""" in acc_str:
+                    return True, acc_str.replace("""\\'""", '"')
+                else:
+                    return False, acc_str
+            elif '"' in acc_str:
+                print('(_replace_special_str)acc_str[END]:', acc_str)
+                return False, '[END]'
+            else:
+                return True, content
+            
+        
+        key_found_count = 0
+        stream_found = False
+        stream_found_key_set = []
+        for i, o in enumerate(output_dict):
+            stream_found_key_set.append([f'{o}', ':', '''"'''])
+        def _send_stream_char(content, special_key_storage):
+            nonlocal key_found_count, stream_found
+            try:                
+                if not stream_found:
+                    stream_found, special_key_storage = _find_special_keys(content, special_key_storage, stream_found_key_set[key_found_count])
+                    if stream_found:
+                        key_found_count += 1
+                
+                elif stream_found:
+                    # check special characters and check if it is end
+                    stream_found, special_key_storage = _replace_special_str(content, special_key_storage)
+                    if len(special_key_storage) > 0 and stream_found and special_key_storage != '[END]':
+                        callback_func(special_key_storage, class_instance)
+                    stream_found = True
+                        
+                elif special_key_storage == '[END]':
+                    stream_found = False
+                    special_key_storage = ''
+                    callback_func('|', class_instance)
+                
+            except Exception as e:
+                print(f'{e}, in _send_stream_char in stream_handler')
+            
+            return special_key_storage
+        
         # # If is retrying, it does not need to send [START] signal
         # if self.is_retrying is False:
         #     callback_start_end(True, class_instance)
         
-        i = 0
-        tot_contents = ''
-        if len(prompt_chain_keys) > 1:
-            tot_contents = {}
-            for k in prompt_chain_keys:
-                tot_contents[k] = ''
+        
                             
         for r in result:
             i += 1
@@ -396,18 +473,33 @@ class LangChainModule():
                     if k not in r:
                         continue
                     tot_contents[k] += r[k].content
-                    # send the last message if it finished
-                    if len(r[k].response_metadata) > 0:
-                        i = stream_step
-                    _send_stream(i, class_instance, stream_step, tot_contents[k], k, output_dict)
+                    
+                    if stream_type == 'str':
+                        # send the last message if it finished
+                        if len(r[k].response_metadata) > 0:
+                            i = stream_step
+                        _send_stream(i, class_instance, stream_step, tot_contents[k], k, output_dict)
+                    elif stream_type == 'char':
+                        # special_key_storage[k] = _send_stream_char(r[k].content, special_key_storage[k])
+                        assert False, 'parallel streaming has not implemented yet, in stream_handler'
+                    elif stream_type == 'json':
+                        assert False, 'stream_type == json has not implemented'
             else:
                 tot_contents += r.content
                 # send the last message if it finished
-                if len(r.response_metadata) > 0:
-                    i = stream_step
-                _send_stream(i, class_instance, stream_step, tot_contents, prompt_chain_keys[0], output_dict)
+                if stream_type == 'str':
+                    if len(r.response_metadata) > 0:
+                        i = stream_step
+                    _send_stream(i, class_instance, stream_step, tot_contents, prompt_chain_keys[0], output_dict)
+                elif stream_type == 'char':
+                    special_key_storage = _send_stream_char(r.content, special_key_storage)
+                        
+                elif stream_type == 'json':
+                    assert False, 'stream_type == json has not implemented'
+                    
+            # if i > 200:
+            #     assert False
         
-
         # callback_start_end(False, class_instance)
 
         # AIMessage
@@ -426,13 +518,15 @@ class LangChainModule():
         chains = {}
         map_input_dict = {}
         callback_func, callback_start_end, class_instance = None, None, None
+        func_name = ''
         if callback is not None:
             assert isinstance(callback, dict), 'callback should be dictionary to be handled. in stream_handler'
             # if instance does not exist, the function will be run in random instance.          
             callback_func = callback['func']
             callback_start_end = callback['func_start_end']
             class_instance = callback['instance']
-        
+            if 'func_name' in callback:
+                func_name = callback['func_name']
         use_start_end_callback = True
         start_end_suffix = ''
         for k in prompt_chain_keys:
@@ -442,8 +536,10 @@ class LangChainModule():
             input_dict = chain_settings[k]['input_dict']
             output_dict = chain_settings[k]['output_dict']
             output_stream = chain_settings[k]['output_stream']
+            stream_type = chain_settings[k].get('stream_type', 'str') # str, char, json
             use_start_end_callback = chain_settings[k]['use_start_end_callback']
             start_end_suffix = chain_settings[k]['start_end_suffix']
+            model_name = chain_settings[k]['model']
             
             # load data if needed
             for ik, iv in chain_settings[k]['input_dict'].items():
@@ -459,7 +555,7 @@ class LangChainModule():
             _config = chain_settings[k]['config']
             map_input_dict.update(input_dict)
             
-            chain, output_parser = self.process_chain(instructions=instructions, prompts=prompts,
+            chain, output_parser = self.process_chain(model_name=model_name, instructions=instructions, prompts=prompts,
                         input_dict=input_dict, output_dict=output_dict, with_history=True)
             chains[k] = {'chain': chain, 'output_parser': output_parser}
         
@@ -468,13 +564,15 @@ class LangChainModule():
         
         # Send [START] signal
         if callback is not None and self.is_retrying is False and use_start_end_callback is True:
-            callback_start_end(True, class_instance)
+            callback_start_end(True, class_instance, start_end_suffix, func_name)
             
+        for k, v in map_input_dict.items():
+            map_input_dict[k] = json.dumps(v, ensure_ascii=False)
         try:
             _result = self.run_chain(main_chain=runnable_chain, input_dict=map_input_dict, config_dict=_config, is_stream=output_stream)
             
             if output_stream:
-                result = self.stream_handler(result=_result, prompt_chain_keys=prompt_chain_keys, output_dict=output_dict, callback=callback)
+                result = self.stream_handler(result=_result, prompt_chain_keys=prompt_chain_keys, output_dict=output_dict, callback=callback, stream_type=stream_type)
             else:
                 result = _result
                 
@@ -499,13 +597,15 @@ class LangChainModule():
                     
                     result[pk].content = remove_comma_before_bracket(result[pk].content)
                     parsed_output = _parser.parse(result[pk].content)
-                    print('parse')
+                    
                     parsed_result[pk] = parsed_output
                     
             else:
                 _parser = chains[prompt_chain_keys[0]]['output_parser']
                 result.content = remove_comma_before_bracket(result.content)
                 parsed_result = _parser.parse(result.content)
+                print(result.content)
+                print('+')
                 
             # keep data
             for pk in prompt_chain_keys:
@@ -544,9 +644,11 @@ class LangChainModule():
             
             _result = result.copy()
             if len(chains) > 1:
-                _result = result[k]
+                _result = result[k].copy()
+                
+            # to unify differen llm models (openai, google, ...)
+            _result = self.unify_metadata(_result)
             
-
             response_metadata = _result.response_metadata
             token_usage = response_metadata['token_usage']
             prompt_tokens = token_usage['prompt_tokens']
@@ -560,6 +662,7 @@ class LangChainModule():
                 
         '''
         # callback for normal return
+        # NO Stream
         '''
         if not output_stream:
             for k in prompt_chain_keys:
@@ -612,12 +715,14 @@ class LangChainModule():
                 if callback is not None:
                     callback_func(return_val, class_instance)
                 # print('====')
+                # print(type(return_val))
                 # print(return_val)
+                # print(chain_settings)
                 self.last_msg = return_val
         
         # Send [END] signal
         if callback is not None and use_start_end_callback is True:
-            callback_start_end(False, class_instance)
+            callback_start_end(False, class_instance, start_end_suffix, func_name)
         # print(json.dumps(parsed_result, indent=4,  ensure_ascii=False))
         return parsed_result
     
@@ -626,20 +731,25 @@ class LangChainModule():
         print('-=-=')
         print('run_func_chain')
         print('prev_output')
-        print(prev_output)
+        print(prev_output.keys())
         print('-=-=')
         print('-=-=')
         parsed_result = {}
         for k in func_chain_keys:
             for in_name in chain_settings[k]['input_dict'].keys():
-                for prev_name in prev_output.keys():
+                for prev_name, prev_val in prev_output.items():
+                    # print(prev_val)
                     if in_name == prev_name:
-                        chain_settings[k]['input_dict'][in_name] = prev_output[in_name]
+                        chain_settings[k]['input_dict'][in_name] = prev_val
+                    if isinstance(prev_val, dict):
+                        for parallel_k, parallel_v in prev_val.items():
+                            if in_name == parallel_k:
+                                chain_settings[k]['input_dict'][in_name] = parallel_v
                         
             func_name = chain_settings[k]['func_name']
             input_dict = chain_settings[k]['input_dict']
             output_dict = chain_settings[k]['output_dict']
-            
+            start_end_suffix = chain_settings[k]['start_end_suffix']
             
             
             # load data if needed
@@ -675,32 +785,47 @@ class LangChainModule():
             callback_flag = chain_settings[k]['callback']
             output_type = chain_settings[k]['output_type']
             output = chain_settings[k]['output']
-            if callback_flag is False or output is None or output == '' or len(output) == 0:
+            output_stream = chain_settings[k].get('output_stream', None)
+            use_start_end_callback = chain_settings[k].get('use_start_end_callback', False)
+            if callback_flag is False or output is None or output == '' or len(output) == 0 or callback is None:
                 continue
             return_val = None
-            if output == 'all':
-                return_val = result
-            elif output_type == 'str':
-                return_val = ''
-                for o in output:
-                    return_val += ('\n' + result[o])
-            elif output_type == 'json':
-                return_val = {}
-                for o in output:
-                    return_val[o] = result[o]
-                    
-            if callback is not None:
-                # if instance does not exist, the function will be run in random instance.
-                if isinstance(callback, dict):
-                    callback_func = callback['func']
-                    class_instance = callback['instance']
-                    callback_func(return_val, class_instance)
-                else:
-                    callback(return_val)
-                    
+            callback_func = callback['func']
+            class_instance = callback['instance']
+            callback_start_end = callback['func_start_end']
+            func_name = ''
+            if 'func_name' in callback:
+                func_name = callback['func_name']
+            # send [START]
+            if use_start_end_callback:
+                callback_start_end(True, class_instance, start_end_suffix, func_name)
+            if output_type == 'stream_str_list' and output_stream is not None:
+                result_str_list = []
+                for o_key, o_val in result.items():
+                    assert isinstance(o_val, list), 'Error in run_func_chain(), result must be a list including string items'
+                    result_str_list.extend(o_val)
+                # send result
+                for r in result_str_list:
+                    callback_func(r, class_instance)
+            else:
+                if output == 'all':
+                    return_val = result
+                elif output_type == 'str':
+                    return_val = ''
+                    for o in output:
+                        return_val += ('\n' + result[o])
+                elif output_type == 'json':
+                    return_val = {}
+                    for o in output:
+                        return_val[o] = result[o]
+                # send result
+                callback_func(return_val, class_instance)
+            # send [END]
+            if use_start_end_callback:
+                callback_start_end(False, class_instance, start_end_suffix, func_name)
         return parsed_result
     
-    def run_chain_tree(self, chain_settings, process, prev_output={'question': 'say anything'}, callback=None, max_extra_tries=2):
+    def run_chain_tree(self, chain_settings, process, prev_output={'question': 'say anything'}, callback=None, max_extra_tries=4):
         self.is_retrying = False
         prompt_chain_keys = [k for k in list(process.keys()) if 'prompt' in chain_settings[k]['type']]
         func_chain_keys = [k for k in list(process.keys()) if 'func' in chain_settings[k]['type']]
@@ -717,9 +842,11 @@ class LangChainModule():
             func_result = self.run_func_chain(chain_settings=chain_settings, func_chain_keys=func_chain_keys, prev_output=prev_output, callback=callback)
             parsed_result.update(func_result)
         
-        print(json.dumps(parsed_result, indent=4,  ensure_ascii=False))
-        for k, v in process.items():
+        # print(json.dumps(parsed_result, indent=4,  ensure_ascii=False))
+        for i, (k, v) in enumerate(process.items()):
             if v is None:
+                if i == 0:
+                    print(json.dumps(parsed_result, indent=4,  ensure_ascii=False))
                 continue
             if not isinstance(parsed_result, dict):
                 proc_key = list(v.keys())[0]
@@ -727,6 +854,19 @@ class LangChainModule():
             parsed_result = self.run_chain_tree(chain_settings, v, prev_output=parsed_result, callback=callback, max_extra_tries=max_extra_tries)
         
         return parsed_result
+    
+    def unify_metadata(self, response):
+        if self.config.company == 'openai':
+            pass
+        elif self.config.company == 'google':
+            response.extra_metadata = response.response_metadata
+            prompt_tokens = response.usage_metadata['input_tokens']
+            completion_tokens = response.usage_metadata['output_tokens']
+            # total_tokens = response.usage_metadata['total_tokens']
+            response.response_metadata = {'token_usage': {'prompt_tokens': prompt_tokens, 
+                                                          'completion_tokens': completion_tokens}
+                                          }
+        return response
 
 def _demo_normal():
     config = GPTConfig(character_id="default", stream=False, tokenizer=None, 
@@ -743,7 +883,7 @@ def _demo_normal():
     
     output_dict = {"english_word1": "explain the first word", "english_word2": "explain the second word"}
     
-    main_chain = lc_module.process_chain(instructions=instructions, prompts=prompts,
+    main_chain = lc_module.process_chain(model_name='gpt-4o-mini', instructions=instructions, prompts=prompts,
                        input_dict=input_dict, output_dict=output_dict)
     
     
@@ -757,7 +897,6 @@ def _demo_history():
                  max_tokens_context=30000, api_key_path='./settings/config.json')
     lc_module = LangChainModule(config)
     
-    # process_chain(self, llm, instructions, prompts, input_dict, output_dict=None, with_history=None):
     
     input_dict = {"korean_word1": "양념", "korean_word2": "진득하다"}
     config={"configurable": {"user_id": "123", "conversation_id": "1"}}
@@ -766,7 +905,7 @@ def _demo_history():
     
     output_dict = {"english_word1": "explain the first word", "english_word2": "explain the second word"}
     
-    main_chain = lc_module.process_chain(instructions=instructions, prompts=prompts,
+    main_chain = lc_module.process_chain(model_name='gpt-4o-mini', instructions=instructions, prompts=prompts,
                        input_dict=input_dict, output_dict=output_dict, with_history=True)
     
     
@@ -789,7 +928,7 @@ def _demo_parallel():
     
     output_dict = {"english_word1": "explain the first word", "english_word2": "explain the second word"}
     
-    main_chain = lc_module.process_chain(instructions=instructions, prompts=prompts,
+    main_chain = lc_module.process_chain(model_name='gpt-4o-mini', instructions=instructions, prompts=prompts,
                        input_dict=input_dict, output_dict=output_dict, with_history=True)
     
     # chain 2
@@ -799,7 +938,7 @@ def _demo_parallel():
     prompts2 = "explain {korean_word3} and {korean_word4} using oxford dictionary to me in English."
     output_dict2 = {"english_word1": "explain the first word", "english_word2": "explain the second word"}
     
-    chain2 = lc_module.process_chain(instructions=instructions2, prompts=prompts2,
+    chain2 = lc_module.process_chain(model_name='gpt-4o-mini', instructions=instructions2, prompts=prompts2,
                        input_dict=input_dict2, output_dict=output_dict2, with_history=True)
         
     map_chain = lc_module.combine_parallel_chain(chains=[main_chain, chain2])
@@ -830,7 +969,7 @@ def _demo_parallel2():
     prompts1 = "explain {korean_word1} and {korean_word2} using oxford dictionary to me in English."
     output_dict1 = {"english_word1": "explain the first word", "english_word2": "explain the second word"}
     
-    main_chain = lc_module.process_chain(instructions=instructions1, prompts=prompts1,
+    main_chain = lc_module.process_chain(model_name='gpt-4o-mini', instructions=instructions1, prompts=prompts1,
                        input_dict=input_dict1, output_dict=output_dict1)
     
     # chain 2
@@ -840,7 +979,7 @@ def _demo_parallel2():
     prompts2 = "explain {korean_word3} and {korean_word4} using oxford dictionary to me in English."
     output_dict2 = {"english_word1": "explain the first word", "english_word2": "explain the second word"}
     
-    chain2 = lc_module.process_chain(instructions=instructions2, prompts=prompts2,
+    chain2 = lc_module.process_chain(model_name='gpt-4o-mini', instructions=instructions2, prompts=prompts2,
                        input_dict=input_dict2, output_dict=output_dict2)
         
     # Combine both chains to run in parallel

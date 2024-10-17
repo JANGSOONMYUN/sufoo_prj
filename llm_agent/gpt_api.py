@@ -79,8 +79,13 @@ class LLMHandler():
         self.lc_module = None
 
     def handle_sufoo(self, data):
-        model='gpt-4o-mini'
-        # model='gpt-4o'
+        if False:
+            model='gpt-4o-mini'
+            # model='gpt-4o'
+            company='openai'
+        else:
+            model='gemini-1.5-flash'
+            company='google'
 
         question = data.get('question')
         additional_info_for_question = data.get('additional_info_for_question')
@@ -98,7 +103,7 @@ class LLMHandler():
 
         if self.gpt_config is None:
             self.gpt_config = GPTConfig(character_id="default", stream=False, tokenizer=None, 
-                    keep_dialog=None, model=model, temperature=0.8, max_tokens_output=None, 
+                    keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
                     max_tokens_context=30000, api_key_path='./settings/config.json')
         if self.lc_module is None:
             self.lc_module = LangChainModule(self.gpt_config)
@@ -119,12 +124,15 @@ class LLMHandler():
         
         prepared_chain = chains['process'][target_process_name]
         
-        llm_result = self.lc_module.run_chain_tree(chains, 
-                                            prepared_chain, 
-                                            input_val_dict
+    
+        llm_result = self.lc_module.run_chain_tree(chain_settings=chains, 
+                                            process=prepared_chain, 
+                                            prev_output=input_val_dict,
+                                            callback=None,
+                                            max_extra_tries=1
                                             )
-        
         print(llm_result)
+        return llm_result
 
 if __name__ == "__main__":
     llm = LLMHandler()
