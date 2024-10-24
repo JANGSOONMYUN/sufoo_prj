@@ -20,6 +20,8 @@ from modules.utils import fix_partial_json, remove_comma_before_bracket
 
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI, VertexAI
+from langchain_google_vertexai import HarmBlockThreshold, HarmCategory
 from langchain_core.output_parsers import StrOutputParser
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
@@ -78,8 +80,19 @@ class LangChainModule():
     def clear_data(self):
         self.keep_input_output_data = {}
             
+    def get_model_company(self, model):
+        if 'gpt' in model:
+            self.config.company = 'openai'
+        elif 'gemini' in model:
+            self.config.company = 'google'
+        else:
+            assert False, 'Currently gpt or gemini can be used only, in get_model_company()'
+                    
     def init_llm(self, model=None):
         model = model if model is not None else self.config.model
+        self.get_model_company(model)
+        if model in self.llm:
+            return
         if self.config.company == 'openai':
             self.llm[model] = ChatOpenAI(
                 model=model,
@@ -87,19 +100,39 @@ class LangChainModule():
                 max_tokens=self.config.max_tokens_output,
                 timeout=None,
                 max_retries=2,
-                api_key=self.api_info['api_key'], 
-                organization=self.api_info['organization']
+                api_key=self.api_info['openai']['api_key'], 
+                organization=self.api_info['openai']['organization']
                 # base_url="...",
                 # other params...
             )
         elif self.config.company == 'google':
-            self.llm[model] = ChatGoogleGenerativeAI(
+            # self.llm[model] = ChatGoogleGenerativeAI(
+            #     model=model,
+            #     temperature=self.config.temperature,
+            #     max_output_tokens=self.config.max_tokens_output,
+            #     # top_p=0.8,
+            #     # top_k=40,
+            #     google_api_key=self.api_info['google']['api_key'],
+            #     # retry_max_attempts=2,  # 현재 지원되지 않음
+            #     # timeout=None,  # 현재 지원되지 않음
+            # )
+            
+            
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.api_info['google']['credentials']
+            self.llm[model] = ChatVertexAI(
+                project=self.api_info['google']['project_id'],
+                location=self.api_info['google']['region'],
                 model=model,
                 temperature=self.config.temperature,
                 max_output_tokens=self.config.max_tokens_output,
                 # top_p=0.8,
                 # top_k=40,
-                google_api_key=self.api_info['google_api_key'],
+                safety_settings={
+                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH
+                },
                 # retry_max_attempts=2,  # 현재 지원되지 않음
                 # timeout=None,  # 현재 지원되지 않음
             )
@@ -181,8 +214,7 @@ class LangChainModule():
     
     # with history
     def process_chain(self, model_name, instructions, prompts, input_dict, output_dict=None, with_history=None):
-        if model_name not in self.llm:
-            self.init_llm(model_name)
+        self.init_llm(model_name)
         llm = self.llm[model_name]
         # keys: input_dict.keys()
         sys_msg = SystemMessage(instructions)
@@ -254,8 +286,7 @@ class LangChainModule():
         return chain, output_parser
         
     def chain_wo_json_output_wo_history(self, model_name, instructions, prompts, input_dict):
-        if model_name not in self.llm:
-            self.init_llm(model_name)
+        self.init_llm(model_name)
         llm = self.llm[model_name]
         sys_msg = SystemMessagePromptTemplate.from_template(instructions)
         hum_msg =  HumanMessagePromptTemplate.from_template(
@@ -602,10 +633,10 @@ class LangChainModule():
                     
             else:
                 _parser = chains[prompt_chain_keys[0]]['output_parser']
+                print(result)
+                print('+')
                 result.content = remove_comma_before_bracket(result.content)
                 parsed_result = _parser.parse(result.content)
-                print(result.content)
-                print('+')
                 
             # keep data
             for pk in prompt_chain_keys:
@@ -859,6 +890,8 @@ class LangChainModule():
         if self.config.company == 'openai':
             pass
         elif self.config.company == 'google':
+            if 'token_usage' in response.response_metadata:
+                return response
             response.extra_metadata = response.response_metadata
             prompt_tokens = response.usage_metadata['input_tokens']
             completion_tokens = response.usage_metadata['output_tokens']

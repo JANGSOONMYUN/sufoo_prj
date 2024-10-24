@@ -102,28 +102,20 @@ async def process_sync_llm(data: DataModel):
         print(result)
     return result
 
-@app.get("/process_sync")
-async def process_sync_func_task():
-    loop = asyncio.get_running_loop()
-
-    # ThreadPoolExecutor를 사용하여 동기 메서드 실행
-    with ThreadPoolExecutor() as pool:
-        result = await loop.run_in_executor(pool, run_sync_func)
-        print(result)
-    return {"message": result}
-
-
-@app.get("/process")
-async def process_task():
-    # 가상의 작업 처리 (비동기)
-    await asyncio.sleep(5)  # 2초간 대기
-    return {"message": "Task completed"}
 
 
 
 
 # uvicorn server_fastapi:app --host 0.0.0.0 --port 20000
 
-
 # ps aux | grep uvicorn
 # pkill -f uvicorn
+
+
+'''
+# with ssl
+uvicorn fastapi_test:app --host 0.0.0.0 --port 15089 --workers 4 \
+  --ssl-keyfile=/home/user/chatgpt_module_test/ssl/aurafortune.com_pem/KeyFile_aurafortune.com_pem.key \
+  --ssl-certfile=/home/user/chatgpt_module_test/ssl/aurafortune.com_pem/aurafortune.com_pem.pem \
+  --ssl-ciphers="HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA"
+'''

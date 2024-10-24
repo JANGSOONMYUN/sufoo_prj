@@ -3,6 +3,7 @@ langchain-community
 langchain_openai
 langchain-google-genai
 google-generativeai
+langchain_google_vertexai
 openai==1.5.0
 pytz
 Pillow==10.1.0
