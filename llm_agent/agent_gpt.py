@@ -18,6 +18,9 @@ from get_prompts import load_chain_setting
 from llm_config import GPTConfig
 from modules.utils import fix_partial_json, remove_comma_before_bracket
 
+# function for langchain
+from modules.search_img.search import include_images
+
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_vertexai import ChatVertexAI, VertexAI
@@ -106,36 +109,36 @@ class LangChainModule():
                 # other params...
             )
         elif self.config.company == 'google':
-            # self.llm[model] = ChatGoogleGenerativeAI(
-            #     model=model,
-            #     temperature=self.config.temperature,
-            #     max_output_tokens=self.config.max_tokens_output,
-            #     # top_p=0.8,
-            #     # top_k=40,
-            #     google_api_key=self.api_info['google']['api_key'],
-            #     # retry_max_attempts=2,  # 현재 지원되지 않음
-            #     # timeout=None,  # 현재 지원되지 않음
-            # )
-            
-            
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.api_info['google']['credentials']
-            self.llm[model] = ChatVertexAI(
-                project=self.api_info['google']['project_id'],
-                location=self.api_info['google']['region'],
+            self.llm[model] = ChatGoogleGenerativeAI(
                 model=model,
                 temperature=self.config.temperature,
                 max_output_tokens=self.config.max_tokens_output,
                 # top_p=0.8,
                 # top_k=40,
-                safety_settings={
-                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH
-                },
+                google_api_key=self.api_info['google']['api_key'],
                 # retry_max_attempts=2,  # 현재 지원되지 않음
                 # timeout=None,  # 현재 지원되지 않음
             )
+            
+            
+            # os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.api_info['google']['credentials']
+            # self.llm[model] = ChatVertexAI(
+            #     project=self.api_info['google']['project_id'],
+            #     location=self.api_info['google']['region'],
+            #     model=model,
+            #     temperature=self.config.temperature,
+            #     max_output_tokens=self.config.max_tokens_output,
+            #     # top_p=0.8,
+            #     # top_k=40,
+            #     safety_settings={
+            #         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            #         HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            #         HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            #         HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH
+            #     },
+            #     # retry_max_attempts=2,  # 현재 지원되지 않음
+            #     # timeout=None,  # 현재 지원되지 않음
+            # )
         else:
             assert False, 'company name should be openai or google, in init_llm()'
     

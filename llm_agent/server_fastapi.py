@@ -8,6 +8,9 @@ import json
 import functools
 from gpt_api import LLMHandler
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
+
 
 app = FastAPI()
 # Configure CORS
@@ -18,6 +21,14 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+
+# 이미지 파일이 있는 폴더 경로
+image_folder_path = "images"
+# FastAPI에 정적 파일 라우터 추가
+app.mount("/images", StaticFiles(directory=image_folder_path), name="images")
+# http://jsm0803.iptime.org:20000/images/1_local_image.jpg
+
 
 data = {
     "question": "당뇨가 있는데 음식과 슈퍼푸드 그리고 영양제 추천해줘",

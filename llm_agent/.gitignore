@@ -13,6 +13,7 @@ templates
 tarot_gpt_client
 openssl
 ssl/*
+images
 
 server_tornado_async*.py
 

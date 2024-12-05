@@ -101,6 +101,9 @@ class LLMHandler():
             'request':request,
         }
 
+        for i, r in enumerate(request):
+            request[i]['representative_image_name'] = ''
+
         if self.gpt_config is None:
             self.gpt_config = GPTConfig(character_id="default", stream=False, tokenizer=None, 
                     keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
