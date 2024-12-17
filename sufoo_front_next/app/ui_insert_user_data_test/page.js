@@ -194,7 +194,7 @@ export default function Component() {
      // ui_loading 페이지로 이동
     router.push(`/ui_loading?question=${encodeURIComponent(searchTerm)}`);
 
-    
+
     try {
       const res = await fetch('/api/insert_user_data', {
         method: 'POST',
@@ -220,6 +220,19 @@ export default function Component() {
         }).toString();
         const url = `/content_page/${randomPageId}?${query}`;
         router.push(url);
+
+        // 인서트된 사용자 데이터로 페이지 정보 삽입 요청
+        await fetch('/api/insert_contents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: String(data.userId),
+            searchWords: searchTerm,
+            advertiseInfo: "", // 필요한 광고 정보가 있다면 여기에 추가
+            data: JSON.stringify(llmJson),
+            url: String(randomPageId)
+          }),
+        });
 
       } else {
         setMessage(`에러 발생: ${data.message}`);
@@ -332,7 +345,7 @@ export default function Component() {
           <h2 className="text-3xl font-bold">당신의 건강을 위한 영양 검색!</h2>
           <p className="text-muted-foreground"></p>
         </section>
-        <section className="mt-4">
+        <section className="mt-4 w-full">
           <Input
             type="search"
             placeholder="당신에게 좋은 음식은?"
@@ -340,15 +353,15 @@ export default function Component() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <div className="flex justify-between mt-2">
+          <div className="mt-2 w-full flex flex-col items-end space-y-2"> {/* flex-col and items-end for vertical alignment */}
           <Button variant="outline" onClick={handleSubmit} disabled={loading}>
-              {loading ? '저장 중...' : '검색'}
-            </Button>
-            <Button variant="outline" onClick={toggleAdvancedSearch} className="flex items-center">
-              {showAdvancedSearch ? <FaChevronUp className="mr-2" /> : <FaChevronDown className="mr-2" />}
-              상세 검색
-            </Button>
-          </div>
+            {loading ? '저장 중...' : '검색'}
+          </Button>
+          <Button variant="ghost" onClick={toggleAdvancedSearch} className="flex items-center">
+            {showAdvancedSearch ? <FaChevronUp className="mr-2" /> : <FaChevronDown className="mr-2" />}
+            상세 검색
+          </Button>
+        </div>
         </section>
          {showAdvancedSearch && (
            <section className="mt-4 space-y-4 w-full">

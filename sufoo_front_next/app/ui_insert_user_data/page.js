@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LoadingModal from "@/components/LoadingModal";
-import { FaChevronUp, FaChevronDown } from 'react-icons/fa'; // 아이콘 임포트 추가
+import { FaChevronUp, FaChevronDown } from 'react-icons/fa';
 
 const CategorySection = ({ title, options, selectedItems, onToggle, category }) => {
   const [isAdding, setIsAdding] = useState(false);
@@ -80,7 +80,7 @@ export default function Component() {
   const [specialIds, setSpecialIds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(true); // 상세 검색 표시 상태
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false); // 상세 검색 초기 상태: 접혀있음
 
 
   // // DB에서 불러오기 (느려서 중지)
@@ -153,9 +153,6 @@ export default function Component() {
     { id: 3, name: '운동선수', name_en: 'Athlete' },
     { id: 4, name: '채식주의자', name_en: 'Vegetarian' },
   ]);
-  const toggleAdvancedSearch = () => {
-    setShowAdvancedSearch(!showAdvancedSearch);
-  };
 
   const toggleSelection = (category, item) => {
     const setSelectedFunction = {
@@ -176,30 +173,28 @@ export default function Component() {
     setLoading(true);
     setMessage('');
 
-    //console.log("Session ID: ", sessionId);
-
-    // const userData = {
-    //   session_id: sessionId,
-    //   gender: selectedGender,
-    //   weight,
-    //   height,
-    //   age,
-    //   searchTerm,
-    //   healthConditions: selectedHealthConditions,
-    //   supplements: selectedSupplements,
-    //   specialNotes: selectedSpecialNotes,
-    //   drugs: selectedDrugs,
-    // };
-
     const userData = {
       session_id: sessionId,
       searchTerm,
+      gender: selectedGender || '남',  // 기본값을 '남'으로 설정
+      weight: weight || '0',  // 기본값을 '0'으로 설정
+      height: height || '0',  // 기본값을 '0'으로 설정
+      age: age || '0' // 기본값을 '0'으로 설정
     };
 
-    if (selectedGender) userData.gender = selectedGender;
-    if (weight) userData.weight = weight;
-    if (height) userData.height = height;
-    if (age) userData.age = age;
+    // if (selectedGender) userData.gender = selectedGender;
+    // if (weight) userData.weight = weight;
+    // if (height) userData.height = height;
+    // if (age) userData.age = age;
+
+    if (!searchTerm) {
+      setMessage('검색어를 입력해주세요.'); // 검색어가 없을 때 메시지 표시
+      setLoading(false);
+      return;
+    }
+
+    // ui_loading 페이지로 이동
+    router.push(`/ui_loading?question=${encodeURIComponent(searchTerm)}`);
 
     const body = {
       userData,
@@ -209,19 +204,16 @@ export default function Component() {
       specialIds
     };
 
-     // ui_loading 페이지로 이동
-    router.push(`/ui_loading?question=${encodeURIComponent(searchTerm)}`);
-
     
+
+
     try {
-      //console.log("Session ID111: ", sessionId);      
       const res = await fetch('/api/insert_user_data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
-      //console.log("Session ID222: ", sessionId);
 
       const data = await res.json();
       if (res.ok) {
@@ -241,9 +233,9 @@ export default function Component() {
         const url = `/content_page/${randomPageId}?${query}`;
         router.push(url);
 
+
       } else {
         setMessage(`에러 발생: ${data.message}`);
-        console.log("Session ID: ", sessionId);
       }
     } catch (error) {
       setMessage(`API 호출 실패: ${error.message}`);
@@ -338,18 +330,22 @@ export default function Component() {
       setLoading(false);
     }
   };
+  
+  const toggleAdvancedSearch = () => {
+    setShowAdvancedSearch(!showAdvancedSearch);
+  };
 
   return (
-    <div className="flex flex-col items-center w-full min-h-screen p-4 bg-gray-100">
+    <div className={`flex flex-col items-center w-full min-h-screen p-4 bg-gray-100`}>
       <header className="flex items-center w-full px-4 py-2">
         <h1 className="text-lg font-bold">FODOIT</h1>
       </header>
-      <main className="w-full max-w-2xl space-y-6">
+      <main className={`w-full max-w-2xl space-y-6 flex-grow flex flex-col items-center transition-all duration-300 ${showAdvancedSearch ? 'items-start' : 'justify-center'}`}>
         <section className="text-center">
           <h2 className="text-3xl font-bold">당신의 건강을 위한 영양 검색!</h2>
           <p className="text-muted-foreground"></p>
         </section>
-        <section className="mt-4">
+        <section className="mt-4 w-full">
           <Input
             type="search"
             placeholder="당신에게 좋은 음식은?"
@@ -357,23 +353,18 @@ export default function Component() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <div className="flex justify-between mt-2">
-            <Button variant="outline" onClick={handleSubmit} disabled={loading}>
-              {loading ? '저장 중...' : '검색'}
-            </Button>
-            {/* 상세 검색 토글 버튼: 화살표로 변경 */}
-          <Button variant="outline" onClick={() => setShowAdvancedSearch(!showAdvancedSearch)} className="flex items-center">
-            {showAdvancedSearch ? (
-              <FaChevronUp className="mr-2" />  // 열려 있을 때 위 화살표
-            ) : (
-              <FaChevronDown className="mr-2" />  // 닫혀 있을 때 아래 화살표
-            )}
+          <div className="mt-2 w-full flex flex-col items-end space-y-2"> {/* flex-col and items-end for vertical alignment */}
+          <Button variant="outline" onClick={handleSubmit} disabled={loading}>
+            {loading ? '저장 중...' : '검색'}
+          </Button>
+          <Button variant="ghost" onClick={toggleAdvancedSearch} className="flex items-center">
+            {showAdvancedSearch ? <FaChevronUp className="mr-2" /> : <FaChevronDown className="mr-2" />}
             상세 검색
           </Button>
-          </div>
+        </div>
         </section>
-        {showAdvancedSearch && (
-          <section className="mt-4 space-y-4">
+         {showAdvancedSearch && (
+           <section className="mt-4 space-y-4 w-full">
             <div className="flex items-center space-x-4">
               <Label htmlFor="gender">성별</Label>
               <Button
@@ -416,36 +407,36 @@ export default function Component() {
                 onChange={(e) => setAge(e.target.value)}
               />
             </div>
-            <CategorySection
-              title="질병 & 건강 상태"
-              options={{ value: healthOptions, setter: setHealthOptions }}
-              selectedItems={selectedHealthConditions}
-              onToggle={toggleSelection}
-              category="health"
-            />
-            <CategorySection
-              title="복용중인 영양제 & 보충제"
-              options={{ value: supplementOptions, setter: setSupplementOptions }}
-              selectedItems={selectedSupplements}
-              onToggle={toggleSelection}
-              category="supplements"
-            />
-            <CategorySection
-              title="복용중인 약물"
-              options={{ value: drugOptions, setter: setDrugOptions }}
-              selectedItems={selectedDrugs}
-              onToggle={toggleSelection}
-              category="drugs"
-            />
-            <CategorySection
-              title="특이 사항"
-              options={{ value: specialOptions, setter: setSpecialOptions }}
-              selectedItems={selectedSpecialNotes}
-              onToggle={toggleSelection}
-              category="specialNotes"
-            />
-          </section>
-        )}
+              <CategorySection
+                title="질병 & 건강 상태"
+                options={{ value: healthOptions, setter: setHealthOptions }}
+                selectedItems={selectedHealthConditions}
+                onToggle={toggleSelection}
+                category="health"
+              />
+              <CategorySection
+                title="복용중인 영양제 & 보충제"
+                options={{ value: supplementOptions, setter: setSupplementOptions }}
+                selectedItems={selectedSupplements}
+                onToggle={toggleSelection}
+                category="supplements"
+              />
+              <CategorySection
+                title="복용중인 약물"
+                options={{ value: drugOptions, setter: setDrugOptions }}
+                selectedItems={selectedDrugs}
+                onToggle={toggleSelection}
+                category="drugs"
+              />
+              <CategorySection
+                title="특이 사항"
+                options={{ value: specialOptions, setter: setSpecialOptions }}
+                selectedItems={selectedSpecialNotes}
+                onToggle={toggleSelection}
+                category="specialNotes"
+              />
+            </section>
+          )}
         {message && <p className="text-red-500 mt-4">{message}</p>}
         {loading && <LoadingModal />}
         {llmJsonData && (
@@ -456,7 +447,7 @@ export default function Component() {
         )}
       </main>
       <div>
-        <iframe src="https://ads-partners.coupang.com/widgets.html?id=822765&template=carousel&trackingCode=AF7114013&subId=&width=680&height=140&tsource=" width="680" height="140" frameBorder="0" scrolling="no" referrerPolicy="unsafe-url" browsingtopics="true"></iframe>
+          <iframe src="https://ads-partners.coupang.com/widgets.html?id=822765&template=carousel&trackingCode=AF7114013&subId=&width=680&height=140&tsource=" width="680" height="140" frameBorder="0" scrolling="no" referrerPolicy="unsafe-url" browsingtopics="true"></iframe>
       </div>
       <footer className="flex justify-center w-full mt-8">
         <div className="flex space-x-4">
@@ -468,5 +459,4 @@ export default function Component() {
       </footer>
     </div>
   );
-  
 }

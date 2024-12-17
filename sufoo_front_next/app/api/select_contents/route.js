@@ -1,7 +1,7 @@
 import { createConnection } from '@/lib/db';
 
 export async function GET(req) {
-    const url = req.nextUrl.searchParams.get('url');
+    const url = new URL(req.url).searchParams.get('url');
     if (!url) {
         return new Response(JSON.stringify({ message: 'URL이 제공되지 않았습니다.', req }), { status: 400 });
       }

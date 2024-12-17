@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import LoadingScreen from '@/app/ui_loading/page'; // ui_loading 컴포넌트 import
+import ReactMarkdown from 'react-markdown'
 
 export default function Page({ params }) {
   const { content_id } = params;
@@ -10,7 +11,7 @@ export default function Page({ params }) {
 
   const userId = searchParams.get('userId');
   const sessionId = searchParams.get('sessionId');
-  const relative_url = searchParams.get('relative_url');
+  const relative_url = content_id //searchParams.get('relative_url');
   const llmJsonData = useRef(JSON.parse(searchParams.get('llmJsonData') || '{}'));
 
   const [responseData, setResponseData] = useState(null);
@@ -18,12 +19,11 @@ export default function Page({ params }) {
   const [noData, setNoData] = useState(false);
 
   useEffect(() => {
-    if (!userId) {
+    if (!userId && !relative_url) {
       setNoData(true);
       setLoading(false);
       return;
     }
-
     let isFetching = false; // fetch 중복 방지 플래그
 
     const fetchData = async () => {
@@ -32,21 +32,55 @@ export default function Page({ params }) {
 
       setLoading(true);
       try {
-        console.log('Sending data:', llmJsonData.current);
-        const response = await fetch('http://jsm0803.iptime.org:20000/llm', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ content: JSON.stringify(llmJsonData.current) }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        if (!userId && relative_url) {
+          const response = await fetch(`/api/select_contents?url=${relative_url}`, {
+            method: 'GET',
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const result = await response.json();
+          // Parse the content_data and include it in the responseData
+          const contentData = JSON.parse(result.pageInfo.content_data); // content_data를 JSON으로 변환
+          console.log('Fetched contentData:', contentData);
+          result.include_images = contentData.include_images; // include_images를 result에 추가
+          setResponseData(result);
+          console.log('Fetched result:', result);
+          if (result) {
+            setNoData(false); // 자료가 있을 경우 noData를 false로 설정
+          }
         }
-
-        const result = await response.json();
-        setResponseData(result);
+        else {
+          console.log('Sending data:', llmJsonData.current);
+          const response = await fetch('http://jsm0803.iptime.org:20000/llm', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ content: JSON.stringify(llmJsonData.current) }),
+          });
+  
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+  
+          const result = await response.json();
+          setResponseData(result);
+  
+          // 인서트된 사용자 데이터로 페이지 정보 삽입 요청
+          await fetch('/api/insert_contents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: String(userId),
+              searchWords: llmJsonData.current.question,
+              advertiseInfo: "", // 필요한 광고 정보가 있다면 여기에 추가
+              data: JSON.stringify(result), // API 응답 결과를 데이터로 사용
+              url: String(relative_url) // relative_url을 사용
+            }),
+          });
+        }
+        
       } catch (error) {
         console.error('Error:', error);
         setResponseData({ error: error.message });
@@ -57,7 +91,7 @@ export default function Page({ params }) {
     };
 
     fetchData();
-  }, [userId]); // userId만 의존성으로 설정
+  }, [userId, relative_url]); // userId와 relative_url을 의존성으로 추가
 
   // 데이터를 렌더링하는 함수
   const renderContent = () => {
@@ -78,26 +112,35 @@ export default function Page({ params }) {
         <h2 className="text-3xl font-semibold">{item.title}</h2>
 
         {/* 설명 */}
-        <p>{item.description}</p>
+        <ReactMarkdown>{item.description}</ReactMarkdown>
 
         {/* 결과 */}
-        <p>{item.result}</p>
+        <ReactMarkdown>{item.result}</ReactMarkdown>
 
         {/* 대표 이미지 */}
         {item.image_url && (
-          <img
-            src={item.image_url}
-            alt={item.representative_image_name || '이미지'}
-            style={{ maxWidth: '100%', borderRadius: '8px', marginTop: '10px' }}
-          />
-        )}
+      <div style={{ overflow: 'hidden', width: '100%', height: 'auto', aspectRatio: '7 / 4' }}> {/* 이미지 컨테이너 */}
+        <img
+          src={item.image_url}
+          alt={item.representative_image_name || '이미지'}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',  // 이미지가 컨테이너에 꽉 차도록 조정
+            objectPosition: 'center center',  // 이미지를 가운데 기준으로 자르기
+            borderRadius: '8px',
+            marginTop: '10px'
+          }}
+        />
+      </div>
+      )}
 
         {/* 상세 항목 (subject) */}
         {item.subject?.map((subjectItem, subIndex) => (
           <div key={subIndex} style={{ marginTop: '10px' }}>
-            <h3>{subjectItem.sub_title}</h3>
-            <p>{subjectItem.sub_description}</p>
-            <p>{subjectItem.sub_result}</p>
+            <h3 className ="text-xl font-semibold">{subjectItem.sub_title}</h3>
+            <ReactMarkdown>{subjectItem.sub_description}</ReactMarkdown>
+            <ReactMarkdown>{subjectItem.sub_result}</ReactMarkdown>
           </div>
         ))}
       </div>

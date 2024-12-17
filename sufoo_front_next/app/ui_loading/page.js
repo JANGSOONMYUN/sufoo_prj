@@ -13,7 +13,7 @@ export default function LoadingScreen() {
 
     const interval = setInterval(() => {
       setDots(prev => prev.length < 3 ? prev + '.' : '');
-    }, 500);
+    }, 100);
 
     return () => clearInterval(interval);
   }, []);
@@ -21,12 +21,12 @@ export default function LoadingScreen() {
   return (
     <div className="loading-container">
       <h1>생성중{dots}</h1>
-      {question && (
+      {/* {question && (
         <div className="question-container">
           <h2>Question:</h2>
           <p>{question}</p>
         </div>
-      )}
+      )} */}
       <div className="loading-card">
         <div className="loading-line"></div>
         <div className="loading-line short"></div>
