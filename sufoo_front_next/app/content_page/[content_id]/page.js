@@ -69,11 +69,13 @@ export default function Page({ params }) {
       return <p>유효한 데이터를 찾을 수 없습니다.</p>;
     }
 
-    // 데이터를 순회하며 렌더링
+    // 데이터를 순회하며 렌더링    
     return includeImages.map((item, index) => (
-      <div key={index} style={{ marginBottom: '20px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+      // <div key={index} style={{ marginBottom: '20px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+      <div key={index} className="space-y-2 bg-white p-4 rounded-lg shadow" style={{ marginBottom: '20px' }} // 여기에 스타일 추가
+    >
         {/* 제목 */}
-        <h2>{item.title}</h2>
+        <h2 className="text-3xl font-semibold">{item.title}</h2>
 
         {/* 설명 */}
         <p>{item.description}</p>
@@ -112,10 +114,10 @@ export default function Page({ params }) {
 
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+      {/* <div style={{ textAlign: 'center', marginBottom: '20px' }}>
         <h2>Question:</h2>
         <p>{llmJsonData.current.question}</p>
-      </div>
+      </div> */}
       {/* 이미지와 세부 데이터 렌더링 */}
       {renderContent()}
     </div>
