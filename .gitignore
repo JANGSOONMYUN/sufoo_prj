@@ -4,3 +4,4 @@ suofoo_front-app/public
 venv
 
 config.json
+.next
