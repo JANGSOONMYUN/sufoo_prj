@@ -176,7 +176,7 @@ export default function Component() {
     const userData = {
       session_id: sessionId,
       searchTerm,
-      gender: selectedGender || '남',  // 기본값을 '남'으로 설정
+      gender: selectedGender || '여',  // 기본값을 '남'으로 설정
       weight: weight || '0',  // 기본값을 '0'으로 설정
       height: height || '0',  // 기본값을 '0'으로 설정
       age: age || '0' // 기본값을 '0'으로 설정
@@ -213,11 +213,10 @@ export default function Component() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-
-
+      
       const data = await res.json();
       if (res.ok) {
-        setMessage(`사용자 정보가 성공적으로 저장되었습니다! 사용자 ID: ${data.userId}`);
+        // setMessage(`사용자 정보가 성공적으로 저장되었습니다! 사용자 ID: ${data.userId}`);
 
         const llmJson = createLlmJson(userData, healthIds, drugIds, supplementIds, specialIds);
         setLlmJsonData(JSON.stringify(llmJson, null, 2));
@@ -337,13 +336,17 @@ export default function Component() {
 
   return (
     <div className={`flex flex-col items-center w-full min-h-screen p-4 bg-gray-100`}>
-      <header className="flex items-center w-full px-4 py-2">
-        <h1 className="text-lg font-bold">FODOIT</h1>
+      <header className="flex items-center w-full px-2 py-1">
+        <img
+          src="/logo/logo_main_0.png"
+          alt="FODOIT Logo"
+          className="h-4 sm:h-6 md:h-8 lg:h-8"
+        />
       </header>
       <main className={`w-full max-w-2xl space-y-6 flex-grow flex flex-col items-center transition-all duration-300 ${showAdvancedSearch ? 'items-start' : 'justify-center'}`}>
-        <section className="text-center">
-          <h2 className="text-3xl font-bold">당신의 건강을 위한 영양 검색!</h2>
-          <p className="text-muted-foreground"></p>
+        <section className="text-center ibm-plex-sans-kr-regular">
+          <h2 className="text-2xl sm:text-2xl md:text-4xl font-bold mb-4">내 몸에 꼭 맞는 건강 정보</h2>
+          <h3 className="text-md sm:text-md md:text-2xl mb-2">인공지능으로 나의 체질, 질병, 복용 약물까지 고려하여 맞춤형 분석 정보 제공</h3>
         </section>
         <section className="mt-4 w-full">
           <Input
@@ -352,6 +355,11 @@ export default function Component() {
             className="w-full pl-8 pr-12 py-2"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleSubmit();
+              }
+            }}
           />
           <div className="mt-2 w-full flex flex-col items-end space-y-2"> {/* flex-col and items-end for vertical alignment */}
           <Button variant="outline" onClick={handleSubmit} disabled={loading}>
@@ -438,25 +446,45 @@ export default function Component() {
             </section>
           )}
         {message && <p className="text-red-500 mt-4">{message}</p>}
-        {loading && <LoadingModal />}
-        {llmJsonData && (
+        {/* {loading && <LoadingModal />} */}
+        {/* {llmJsonData && (
           <div className="mt-4 p-4 bg-white rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-2">LLM JSON 데이터:</h3>
             <pre className="bg-gray-100 p-2 rounded overflow-x-auto">{llmJsonData}</pre>
           </div>
-        )}
+        )} */}
+    
       </main>
-      <div>
-          <iframe src="https://ads-partners.coupang.com/widgets.html?id=822765&template=carousel&trackingCode=AF7114013&subId=&width=680&height=140&tsource=" width="680" height="140" frameBorder="0" scrolling="no" referrerPolicy="unsafe-url" browsingtopics="true"></iframe>
+
+      <div className="mt-8 max-w-2xl w-full mx-auto"> {/* max-w-2xl와 mx-auto 추가 */}
+        <iframe 
+          src="https://ads-partners.coupang.com/widgets.html?id=822765&template=carousel&trackingCode=AF7114013&subId=&width=680&height=140&tsource=" 
+          width="100%" 
+          height="140" 
+          frameBorder="0" 
+          scrolling="no" 
+          referrerPolicy="unsafe-url" 
+          browsingtopics="true">
+        </iframe>
+        <iframe 
+          src="https://coupa.ng/cg0JDb" 
+          width="100%" 
+          height="36" 
+          frameBorder="0" 
+          scrolling="no" 
+          referrerPolicy="unsafe-url" 
+          browsingtopics="true">
+        </iframe>
       </div>
-      <footer className="flex justify-center w-full mt-8">
+      
+      {/* <footer className="flex justify-center w-full mt-8">
         <div className="flex space-x-4">
           <Link href="#" className="text-muted-foreground" prefetch={false}>FAQ</Link>
           <Link href="#" className="text-muted-foreground" prefetch={false}>Terms</Link>
           <Link href="#" className="text-muted-foreground" prefetch={false}>AI Policy</Link>
           <Link href="#" className="text-muted-foreground" prefetch={false}>Privacy</Link>
         </div>
-      </footer>
+      </footer> */}
     </div>
   );
 }

@@ -1,22 +1,3 @@
-// // app/page.jsx
-// 'use client';
-
-// import { useEffect } from 'react';
-// import { useRouter } from 'next/navigation';
-
-// const Home = () => {
-//   const router = useRouter();
-
-//   useEffect(() => {
-//     // 페이지 로딩 시 ui_insert_user_data로 리디렉션
-//     router.push('/ui_insert_user_data');
-//   }, [router]);
-
-//   return null;  // 리디렉션 처리 후 렌더링은 하지 않음
-// };
-
-// export default Home;
-
 
 // app/page.jsx
 import React from 'react';

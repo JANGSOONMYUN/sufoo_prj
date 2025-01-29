@@ -258,7 +258,7 @@ export default function Component() {
           </div>
         </section>
       </main>
-      <footer className="flex justify-center w-full mt-8">
+      {/* <footer className="flex justify-center w-full mt-8">
         <div className="flex space-x-4">
           <Link href="#" className="text-muted-foreground" prefetch={false}>
             FAQ
@@ -273,7 +273,7 @@ export default function Component() {
             Privacy
           </Link>
         </div>
-      </footer>
+      </footer> */}
     </div>
   );
 }

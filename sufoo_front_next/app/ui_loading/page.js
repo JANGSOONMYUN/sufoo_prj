@@ -14,7 +14,7 @@ export default function LoadingScreen() {
     const interval = setInterval(() => {
       setDots(prev => prev.length < 3 ? prev + '.' : '');
     }, 100);
-
+    
     return () => clearInterval(interval);
   }, []);
 

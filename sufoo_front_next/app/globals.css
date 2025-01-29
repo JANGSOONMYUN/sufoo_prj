@@ -65,5 +65,65 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Noto Sans KR', serif; /* 원하는 폰트 설정 */
+    font-weight: 400; 
+    line-height: 1;
   }
+}
+
+.content-style {
+  line-height: 1.7; /* 원하는 줄 간격 값으로 설정 */
+}
+
+/* IBM Plex Sans KR Regular */
+.ibm-plex-sans-kr-regular {
+  font-family: "IBM Plex Sans KR", serif;
+  font-weight: 400; /* Regular weight */
+  font-style: normal;
+}
+
+/* Noto Sans KR classes with varying weights */
+.noto-sans-kr-100 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 100; /* Light */
+}
+
+.noto-sans-kr-200 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 200; /* Extra Light */
+}
+
+.noto-sans-kr-300 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 300; /* Light */
+}
+
+.noto-sans-kr-400 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 400; /* Regular */
+}
+
+.noto-sans-kr-500 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 500; /* Medium */
+}
+
+.noto-sans-kr-600 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 600; /* Semi Bold */
+}
+
+.noto-sans-kr-700 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 700; /* Bold */
+}
+
+.noto-sans-kr-800 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 800; /* Extra Bold */
+}
+
+.noto-sans-kr-900 {
+  font-family: "Noto Sans KR", serif;
+  font-weight: 900; /* Black */
 }
