@@ -1,7 +1,7 @@
 import json
 import os
 import copy
-from get_prompts import set_parallel_chain_builder
+from get_prompts import set_parallel_chain_builder, update_prompts_in_chains
 
 def wrap_subjects(data):
     base_template = {
@@ -49,8 +49,10 @@ def wrap_subjects(data):
 def regen_chain(data, chain_ptr):
     subjects = data['subjects']
     # update chain
-    target_proc = data['target_proc']
-    target_chain = data['target_chain']
+    chain_info = data['chain_info']
+    target_proc = chain_info['target_proc']
+    target_chain = chain_info['target_chain']
+    json_path = chain_info['json_path']
     
     with open("log/output_data.json", "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
@@ -59,6 +61,7 @@ def regen_chain(data, chain_ptr):
     
     chain_process = chain_ptr['process'][target_proc]
     replaced_chains, post_input_keys = set_parallel_chain_builder(entire_chains=chain_ptr, subject_list=subjects, chain_process=chain_process, target_chain_name=target_chain)
+    update_prompts_in_chains(json_path=json_path, chains=chain_ptr)
     
     with open("log/output2.json", "w", encoding="utf-8") as f:
         json.dump(chain_ptr, f, indent=4, ensure_ascii=False)

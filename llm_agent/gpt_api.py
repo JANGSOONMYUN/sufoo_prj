@@ -214,6 +214,12 @@ class LLMHandler():
 
         chains = update_prompts_in_chains(json_path=json_path, chains=chains)
         
+        chain_info = {
+            'target_proc': target_process_name,
+            'target_chain': target_chain_for_parallel,
+            'json_path': json_path
+        }
+        
         # input value must be string
         input_val_dict = {
             'information': json.dumps(information, ensure_ascii=False),
@@ -221,23 +227,22 @@ class LLMHandler():
             'additional_info_for_question':additional_info_for_question,
             'client_info':client_info,
             'request':request,
-            'target_proc':target_process_name,
-            'target_chain':target_chain_for_parallel,
+            'chain_info': chain_info,
         }
         # with open('tmp_information.json', 'w') as json_file:
         #     json.dump(input_val_dict, json_file, indent=4, ensure_ascii=False)
 
-        # with open('tmp_chains.json', 'w') as json_file:
-        #     json.dump(chains, json_file, indent=4, ensure_ascii=False)
+        with open('log/tmp_chains.json', 'w') as json_file:
+            json.dump(chains, json_file, indent=4, ensure_ascii=False)
         
         prepared_chain = chains['process'][target_process_name]
         
     
         llm_result = self.lc_module.run_chain_tree(chain_settings=chains, 
-                                            process=prepared_chain, 
-                                            prev_output=input_val_dict,
-                                            callback=None,
-                                            max_extra_tries=1
+                                                process=prepared_chain, 
+                                                prev_output=input_val_dict,
+                                                callback=None,
+                                                max_extra_tries=1
                                             )
         print(llm_result)
         return llm_result

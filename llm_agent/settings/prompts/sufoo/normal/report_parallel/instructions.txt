@@ -52,21 +52,16 @@
 비타민 과다 복용의 위험성: 영양제 오남용의 결과와 예방책
 
 # 입력 템플릿 (참고)
-## $request_keyname은 변수로 request_0, request_1, request_2, request_3, request_4, request_5, ... 와 같이 설정된다 
-{
-    "$request_keyname": {
-        "title": "",    # 주제 제목
-        "result": "",   # 주제에 대한 해설
-        "subject":[     # 소주제 list; 소주제는 1~2개 정도로 구성
-            {
-                "sub_title":"", # 소주제 제목
-                "sub_result":"" # 소주제에 대한 해설
-            },
-            {
-                "sub_title":"", # 소주제 제목
-                "sub_result":"" # 소주제에 대한 해설
-            }
-            ],
-        "representative_image_name": "" # 본 주제에 어울리는 사진의 이름
-    }
-}
+    "title": "",    # 주제 제목
+    "result": "",   # 주제에 대한 해설
+    "subject":[     # 소주제 list; 소주제는 1~2개 정도로 구성
+        {
+            "sub_title":"", # 소주제 제목
+            "sub_result":"" # 소주제에 대한 해설
+        },
+        {
+            "sub_title":"", # 소주제 제목
+            "sub_result":"" # 소주제에 대한 해설
+        }
+        ],
+    "representative_image_name": "" # 본 주제에 어울리는 사진의 이름

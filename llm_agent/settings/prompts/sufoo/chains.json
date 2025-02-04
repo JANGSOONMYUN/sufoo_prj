@@ -5,15 +5,6 @@
                 "include_images": null
             }
         },
-        "fodoit_orig": {
-            "create_subjects": {
-                "wrap_subjects": {
-                    "report": {
-                        "include_images": null
-                    }
-                }
-            }
-        },
         "fodoit": {
             "create_subjects": {
                 "regen_chain": {
@@ -52,8 +43,8 @@
         "instructions_data": ["normal/create_subjects/instructions.txt"],
         "prompts_data": ["normal/create_subjects/prompts.txt"],
         "input_dict": {"question": null, "client_info": null, "information": null},
-        "output_dict": {"subjects": "data type: list[str]; 고객 맞춤형 유용한 정보를 전달하기 위한 주제 목록; 중복되지 않게 다양한 주제로 만든다;"},
-        "keep_input_output_data": ["question", "client_info", "target_proc", "target_chain"],
+        "output_dict": {"subjects": "data type: list[str]; 고객 맞춤형 유용한 정보를 전달하기 위한 주제 목록; 중복되지 않게 다양한 주제로 만든다; 최대한 상세하게 정의"},
+        "keep_input_output_data": ["question", "client_info", "chain_info"],
         "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
         "save_history": false,
         "use_history": false,
@@ -69,7 +60,7 @@
         "return_func_name": "wrap_subjects",
         "type": "function",
         "func_name": "wrap_subjects",
-        "input_dict": {"subjects": null, "target_proc": null, "target_chain": null},
+        "input_dict": {"subjects": null, "chain_info": null},
         "output_dict": {"request_template": ""},
         "callback": false,
         "use_start_end_callback": false,
@@ -81,20 +72,8 @@
         "return_func_name": "regen_chain",
         "type": "function_modify_chain",
         "func_name": "regen_chain",
-        "input_dict": {"subjects": null, "target_proc": null, "target_chain": null},
+        "input_dict": {"subjects": null, "chain_info": null},
         "output_dict": {"result_regen_chain": ""},
-        "callback": false,
-        "use_start_end_callback": false,
-        "start_end_suffix": "",
-        "output_type": "json",
-        "output": "all"
-    },
-    "create_parallel_report": {
-        "return_func_name": "create_parallel_report",
-        "type": "function_parallel_generator",
-        "func_name": "create_parallel_report",
-        "input_dict": {"request_template": null},
-        "output_dict": {"request_template": ""},
         "callback": false,
         "use_start_end_callback": false,
         "start_end_suffix": "",
@@ -127,7 +106,7 @@
         "instructions_data": ["normal/report_parallel/instructions.txt"],
         "prompts_data": ["normal/report_parallel/prompts.txt"],
         "input_dict": {"client_info": null},
-        "output_dict": {"request": "data type: JSON; 입력 템플릿의 모든 빈 부분을 채워넣는다; 사용자(고객)의 정보에 맞는 초개인화 정보를 담는다."},
+        "output_dict": {"request": "data type: JSON; 입력 템플릿의 모든 빈 부분(title, result, subject, representative_image_name, ...)을 채워넣는다; 사용자(고객)의 정보에 맞는 초개인화 정보를 담는다."},
         "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
         "save_history": false,
         "use_history": true,

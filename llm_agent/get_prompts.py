@@ -88,9 +88,7 @@ def _valid_chain_in_out(parent_chain, child_chain, chains, keep_data_set):
                     print('[WARN] ' + f'input_dict must include "{in_k}" in the chain "{k}", in _valid_chain()')
         
         _valid_chain_in_out(k, v, chains, keep_data_set)
-        
-            
-        
+
 def validate_chain_setting(chains, target_process_name=None):
     process = chains['process']
     keep_data_set = set()
