@@ -1,19 +1,37 @@
 {
     "process": {
-        "sufoo_": {
-            "report": null
-        },
         "sufoo": {
             "report_2": {
                 "include_images": null
             }
+        },
+        "fodoit_orig": {
+            "create_subjects": {
+                "wrap_subjects": {
+                    "report": {
+                        "include_images": null
+                    }
+                }
+            }
+        },
+        "fodoit": {
+            "create_subjects": {
+                "regen_chain": {
+                    "parallel_report": {
+                        "wrap_reports": {
+                            "include_images": null
+                        }
+                    }
+                }
+            }
         }
     },
-    "report": {
+    "report_2": {
+        "return_func_name": "report",
         "type": "prompts",
         "model": "gemini-1.5-flash",
-        "instructions_data": ["normal/report/instructions.txt"],
-        "prompts_data": ["normal/report/prompts.txt"],
+        "instructions_data": ["normal/report_2/instructions.txt"],
+        "prompts_data": ["normal/report_2/prompts.txt"],
         "input_dict": {"information": null},
         "output_dict": {"request": "according to the request in information and fill results in detail as many as possible;"},
         "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
@@ -23,16 +41,74 @@
         "use_start_end_callback": false,
         "start_end_suffix": "",
         "output_stream": false,
+        "stream_type": "json",
         "output_type": "json",
         "output": "all"
     },
-    "report_2": {
+    "create_subjects": {
+        "return_func_name": "create_subjects",
+        "type": "prompts",
+        "model": "gemini-1.5-flash",
+        "instructions_data": ["normal/create_subjects/instructions.txt"],
+        "prompts_data": ["normal/create_subjects/prompts.txt"],
+        "input_dict": {"question": null, "client_info": null, "information": null},
+        "output_dict": {"subjects": "data type: list[str]; 고객 맞춤형 유용한 정보를 전달하기 위한 주제 목록; 중복되지 않게 다양한 주제로 만든다;"},
+        "keep_input_output_data": ["question", "client_info", "target_proc", "target_chain"],
+        "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
+        "save_history": false,
+        "use_history": false,
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_stream": false,
+        "stream_type": "json",
+        "output_type": "json",
+        "output": "all"
+    },
+    "wrap_subjects": {
+        "return_func_name": "wrap_subjects",
+        "type": "function",
+        "func_name": "wrap_subjects",
+        "input_dict": {"subjects": null, "target_proc": null, "target_chain": null},
+        "output_dict": {"request_template": ""},
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_type": "json",
+        "output": "all"
+    },
+    "regen_chain": {
+        "return_func_name": "regen_chain",
+        "type": "function_modify_chain",
+        "func_name": "regen_chain",
+        "input_dict": {"subjects": null, "target_proc": null, "target_chain": null},
+        "output_dict": {"result_regen_chain": ""},
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_type": "json",
+        "output": "all"
+    },
+    "create_parallel_report": {
+        "return_func_name": "create_parallel_report",
+        "type": "function_parallel_generator",
+        "func_name": "create_parallel_report",
+        "input_dict": {"request_template": null},
+        "output_dict": {"request_template": ""},
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_type": "json",
+        "output": "all"
+    },
+    "report": {
+        "return_func_name": "report",
         "type": "prompts",
         "model": "gemini-1.5-flash",
         "instructions_data": ["normal/report/instructions.txt"],
         "prompts_data": ["normal/report/prompts.txt"],
-        "input_dict": {"information": null},
-        "output_dict": {"request": "according to the request in information and fill results in detail as many as possible;"},
+        "input_dict": {"request_template": null, "question": null, "client_info": null},
+        "output_dict": {"request": "data type: LIST[JSON];입력 템플릿의 모든 빈 부분을 채워넣는다; 사용자(고객)의 정보에 맞는 초개인화 정보를 담는다."},
         "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
         "save_history": true,
         "use_history": true,
@@ -40,10 +116,43 @@
         "use_start_end_callback": false,
         "start_end_suffix": "",
         "output_stream": false,
+        "stream_type": "json",
+        "output_type": "json",
+        "output": "all"
+    },
+    "parallel_report": {
+        "return_func_name": "report",
+        "type": "prompts",
+        "model": "gemini-1.5-flash",
+        "instructions_data": ["normal/report_parallel/instructions.txt"],
+        "prompts_data": ["normal/report_parallel/prompts.txt"],
+        "input_dict": {"client_info": null},
+        "output_dict": {"request": "data type: JSON; 입력 템플릿의 모든 빈 부분을 채워넣는다; 사용자(고객)의 정보에 맞는 초개인화 정보를 담는다."},
+        "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
+        "save_history": false,
+        "use_history": true,
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_stream": false,
+        "stream_type": "json",
+        "output_type": "json",
+        "output": "all"
+    },
+    "wrap_reports": {
+        "return_func_name": "wrap_reports",
+        "type": "function",
+        "func_name": "wrap_reports",
+        "input_dict": {},
+        "output_dict": {"request": ""},
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
         "output_type": "json",
         "output": "all"
     },
     "include_images": {
+        "return_func_name": "include_images",
         "type": "function",
         "func_name": "include_images",
         "input_dict": {"request": null},
@@ -51,6 +160,30 @@
         "callback": false,
         "use_start_end_callback": false,
         "start_end_suffix": "",
+        "output_type": "json",
+        "output": "all"
+    },
+    "_sample_with_all_options": {
+        "return_func_name": "sample_function_name",
+        "type": "prompts",
+        "model": "gemini-1.5-flash",
+        "instructions_data": ["sample/instructions.txt"],
+        "prompts_data": ["sample/prompts.txt"],
+        "input_dict": {"message": null},
+        "output_dict": {"answer": "answer for the message",
+                        "extra_info": "additional comment for the message" },
+        "optional_data": {
+                    "extra_info": "str"
+                },
+        "keep_input_output_data": ["optional_data", "answer"],
+        "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
+        "save_history": true,
+        "use_history": true,
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_stream": false,
+        "stream_type": "json",
         "output_type": "json",
         "output": "all"
     }

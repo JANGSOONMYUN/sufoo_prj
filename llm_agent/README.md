@@ -30,19 +30,7 @@ source ~/.bashrc
 
 # Configuration
 - File name = [settings/config.json]
-- File contents = 
-```
-{
-    "api_key": "sk-JEP5T......",
-    "api_key_0": "sk-JEP5T......",
-    ...,
-    "port": 12009,
-    "close_server_when_client_die": true 
-}
-```
-- "api_key": API key of OpenAI; 현재 하나의 key 만 공통적으로 사용.
-- "port": port number
-- "close_server_when_client_die": 클라이언트 연결이 끊겼을 때 서버의 상태. (true: 서버 종료, false: 서버 유지) [deprecated]
+[deprecated]
 
 
 # How to run
@@ -81,4 +69,16 @@ lsof -i :15000
 lsof -ti :15020 | xargs kill
 # OR
 lsof -i :15019 | awk 'NR!=1 {print $2}' | xargs kill -9
+```
+
+## RUN
+### With SSL
+```
+sudo chmod -R a+r /home/jsm/ssl_keys
+
+uvicorn server_fastapi:app --host 0.0.0.0 --port 20000   --ssl-keyfile=/home/jsm/ssl_keys/privkey.pem   --ssl-certfile=/home/jsm/ssl_keys/fullchain.pem   --ssl-ciphers='HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA'
+```
+### Without SSL
+```
+uvicorn server_fastapi:app --host 0.0.0.0 --port 20000
 ```

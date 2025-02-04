@@ -19,8 +19,8 @@ from openai import OpenAI
 from get_config import get_ip_port, get_num_clients
 from agent_gpt import LangChainModule
 from llm_config import GPTConfig
-from get_prompts import load_chain_setting, validate_chain_setting
-from get_prompts import subject_separator, chain_builder, update_prompts_in_chains, load_json_file, convert_str_list_to_json
+from get_prompts import load_chain_setting, validate_chain_setting, set_parallel_chain_builder
+from get_prompts import subject_separator, update_prompts_in_chains, load_json_file, convert_str_list_to_json
 
 from manage_files import cleanup_loop, save_json_loop, load_statistics
 from functools import partial
@@ -86,6 +86,25 @@ class LLMHandler():
         else:
             model='gemini-1.5-flash'
             company='google'
+            
+        '''
+        '{
+        "question":"고혈압",
+        "additional_info_for_question":"",
+        "client_info":
+            {"gender":"여","weight":"0","height":"0","bmi":"NaN","health_conditions":[],"medications_being_taken":[],"supplements_being_taken":[],"special_conditions":[]},
+        "request":[
+            {"title":"","description":"","result":"",
+            "subject":[
+                {"sub_title":"","sub_description":"","sub_result":""},
+                {"sub_title":"","sub_description":"","sub_result":""}]},
+            {"title":"","description":"","result":"",
+            "subject":[
+                {"sub_title":"","sub_description":"","sub_result":""},
+                {"sub_title":"","sub_description":"","sub_result":""}
+                ]
+        }]}'
+        '''
 
         question = data.get('question')
         additional_info_for_question = data.get('additional_info_for_question')
@@ -115,7 +134,6 @@ class LLMHandler():
         json_path='./settings/prompts/sufoo/chains.json'
         chains = load_json_file(json_path)
         chains = update_prompts_in_chains(json_path=json_path, chains=chains)
-        validate_chain_setting(chains)
         
         # input value must be string
         input_val_dict = {'information': json.dumps(information, ensure_ascii=False)}
@@ -137,6 +155,92 @@ class LLMHandler():
         print(llm_result)
         return llm_result
 
+    def handle_fodoit(self, data):
+        if False:
+            model='gpt-4o-mini'
+            # model='gpt-4o'
+            company='openai'
+        else:
+            model='gemini-1.5-flash'
+            company='google'
+            
+        '''
+        '{
+        "question":"고혈압",
+        "additional_info_for_question":"",
+        "client_info":
+            {"gender":"여","weight":"0","height":"0","bmi":"NaN","health_conditions":[],"medications_being_taken":[],"supplements_being_taken":[],"special_conditions":[]},
+        "request":[
+            {"title":"","description":"","result":"",
+            "subject":[
+                {"sub_title":"","sub_description":"","sub_result":""},
+                {"sub_title":"","sub_description":"","sub_result":""}]},
+            {"title":"","description":"","result":"",
+            "subject":[
+                {"sub_title":"","sub_description":"","sub_result":""},
+                {"sub_title":"","sub_description":"","sub_result":""}
+                ]
+        }]}'
+        '''
+
+        question = data.get('question')
+        additional_info_for_question = data.get('additional_info_for_question')
+        client_info = data.get('client_info')
+        request = data.get('request')
+
+        # request = convert_str_list_to_json(request)
+
+        information = {
+            'question':question,
+            'additional_info_for_question':additional_info_for_question,
+            'client_info':client_info,
+            'request':request,
+        }
+
+        for i, r in enumerate(request):
+            request[i]['representative_image_name'] = ''
+
+        if self.gpt_config is None:
+            self.gpt_config = GPTConfig(character_id="default", stream=False, tokenizer=None, 
+                    keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
+                    max_tokens_context=30000, api_key_path='./settings/config.json')
+        if self.lc_module is None:
+            self.lc_module = LangChainModule(self.gpt_config)
+
+        target_process_name = 'fodoit'
+        json_path='./settings/prompts/sufoo/chains.json'
+        target_chain_for_parallel = 'parallel_report'
+        chains = load_json_file(json_path)
+
+        chains = update_prompts_in_chains(json_path=json_path, chains=chains)
+        
+        # input value must be string
+        input_val_dict = {
+            'information': json.dumps(information, ensure_ascii=False),
+            'question':question,
+            'additional_info_for_question':additional_info_for_question,
+            'client_info':client_info,
+            'request':request,
+            'target_proc':target_process_name,
+            'target_chain':target_chain_for_parallel,
+        }
+        # with open('tmp_information.json', 'w') as json_file:
+        #     json.dump(input_val_dict, json_file, indent=4, ensure_ascii=False)
+
+        # with open('tmp_chains.json', 'w') as json_file:
+        #     json.dump(chains, json_file, indent=4, ensure_ascii=False)
+        
+        prepared_chain = chains['process'][target_process_name]
+        
+    
+        llm_result = self.lc_module.run_chain_tree(chain_settings=chains, 
+                                            process=prepared_chain, 
+                                            prev_output=input_val_dict,
+                                            callback=None,
+                                            max_extra_tries=1
+                                            )
+        print(llm_result)
+        return llm_result
 if __name__ == "__main__":
     llm = LLMHandler()
 
