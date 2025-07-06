@@ -1,0 +1,277 @@
+/* 웨딩 초대장 커스텀 스타일 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Dancing+Script:wght@400;500;600;700&display=swap');
+
+:root {
+  /* 웨딩 테마 색상 */
+  --wedding-primary: #d4af37; /* 골드 */
+  --wedding-secondary: #f8f6f0; /* 크림 */
+  --wedding-accent: #8b4513; /* 브라운 */
+  --wedding-text: #2c2c2c; /* 다크 그레이 */
+  --wedding-light: #fefefe; /* 화이트 */
+  --wedding-pink: #f4c2c2; /* 소프트 핑크 */
+  --wedding-sage: #9caf88; /* 세이지 그린 */
+}
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  line-height: 1.6;
+  color: var(--wedding-text);
+  background: linear-gradient(135deg, var(--wedding-secondary) 0%, var(--wedding-light) 100%);
+  min-height: 100vh;
+}
+
+.wedding-container {
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--wedding-light);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.wedding-section {
+  padding: 2rem 1.5rem;
+  position: relative;
+}
+
+.wedding-title {
+  font-family: 'Dancing Script', cursive;
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: var(--wedding-primary);
+  text-align: center;
+  margin-bottom: 1rem;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.wedding-subtitle {
+  font-size: 1.1rem;
+  font-weight: 300;
+  text-align: center;
+  color: var(--wedding-accent);
+  margin-bottom: 2rem;
+  letter-spacing: 0.5px;
+}
+
+.wedding-divider {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--wedding-primary), transparent);
+  margin: 2rem auto;
+}
+
+.wedding-card {
+  background: var(--wedding-light);
+  border-radius: 15px;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.wedding-button {
+  background: linear-gradient(135deg, var(--wedding-primary), #b8941f);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 25px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(212, 175, 55, 0.3);
+}
+
+.wedding-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(212, 175, 55, 0.4);
+}
+
+.wedding-icon {
+  color: var(--wedding-primary);
+}
+
+.wedding-text {
+  text-align: center;
+  line-height: 1.8;
+  color: var(--wedding-text);
+}
+
+.wedding-date {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--wedding-primary);
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.wedding-location {
+  font-size: 1.1rem;
+  color: var(--wedding-accent);
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.wedding-names {
+  font-family: 'Dancing Script', cursive;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--wedding-primary);
+  text-align: center;
+  margin: 1.5rem 0;
+}
+
+.wedding-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.wedding-gallery img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.wedding-gallery img:hover {
+  transform: scale(1.05);
+}
+
+.wedding-contact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--wedding-secondary);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.wedding-account {
+  padding: 1rem;
+  background: var(--wedding-secondary);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.wedding-guestbook {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 1rem;
+}
+
+.wedding-message {
+  background: var(--wedding-secondary);
+  padding: 1rem;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.wedding-dday {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--wedding-primary);
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.wedding-ornament {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  background: var(--wedding-primary);
+  border-radius: 50%;
+  opacity: 0.1;
+}
+
+.wedding-ornament.top-left {
+  top: 20px;
+  left: 20px;
+}
+
+.wedding-ornament.bottom-right {
+  bottom: 20px;
+  right: 20px;
+}
+
+/* 페이드 인 애니메이션 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wedding-fade-in {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* 모바일 반응형 */
+@media (max-width: 480px) {
+  .wedding-section {
+    padding: 1.5rem 1rem;
+  }
+
+  .wedding-title {
+    font-size: 2rem;
+  }
+
+  .wedding-card {
+    padding: 1rem;
+  }
+
+  .wedding-contact {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+}
+
+/* 웨딩 버튼 스타일 재정의 */
+.wedding-button,
+.wedding-button:hover {
+  background: linear-gradient(135deg, var(--wedding-primary), #b8941f) !important;
+  color: white !important;
+  border: none !important;
+}
+
+/* 웨딩 테마 배경 색상 */
+.bg-wedding-secondary {
+  background-color: var(--wedding-secondary) !important;
+}
+
+.text-wedding-accent {
+  color: var(--wedding-accent) !important;
+}
+
+/* 갤러리 반응형 */
+@media (max-width: 320px) {
+  .wedding-gallery {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 스크롤바 스타일 */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--wedding-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--wedding-primary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b8941f;
+} 

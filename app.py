@@ -1,12 +1,24 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import mysql.connector
 
 app = Flask(__name__)
 CORS(app)
-##
+
+def dbconfig():
+    return mysql.connector.connect(
+        host: 'jsm0803.iptime.org',
+        port: '13306',
+        user: 'sufoo',
+        password: 'jsm0803123',
+        database: 'sufoo'
+    )
+
 @app.route('/')
 def home():
     return "Hello, Flask!"
+
+
 
 @app.route('/api/search', methods=['GET'])
 def search():
@@ -24,6 +36,3 @@ def fetch_data():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0',port=5000)
-
-    ##1
-

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -81,6 +81,8 @@ export default function Component() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false); // 상세 검색 초기 상태: 접혀있음
+  const [recommendations, setRecommendations] = useState([]);
+  const searchTermRef = useRef(searchTerm);
 
 
   // // DB에서 불러오기 (느려서 중지)
@@ -152,6 +154,7 @@ export default function Component() {
     { id: 2, name: '수유 중', name_en: 'Breastfeeding' },
     { id: 3, name: '운동선수', name_en: 'Athlete' },
     { id: 4, name: '채식주의자', name_en: 'Vegetarian' },
+    { id: 5, name: '흡연', name_en: 'Smoking' },
   ]);
 
   const toggleSelection = (category, item) => {
@@ -176,7 +179,7 @@ export default function Component() {
     const userData = {
       session_id: sessionId,
       searchTerm,
-      gender: selectedGender || '여',  // 기본값을 '남'으로 설정
+      gender: selectedGender || '알수없음',  // 기본값 선택안함
       weight: weight || '0',  // 기본값을 '0'으로 설정
       height: height || '0',  // 기본값을 '0'으로 설정
       age: age || '0' // 기본값을 '0'으로 설정
@@ -293,6 +296,7 @@ export default function Component() {
 
   useEffect(() => {
     fetchSessionId();
+    fetchRecommend();
   }, []);
 
   const fetchSessionId = async () => {
@@ -308,6 +312,27 @@ export default function Component() {
       setSessionId('temp_' + Date.now().toString());
     }
   };
+
+  const fetchRecommend = async () => {
+    try { 
+      const res = await fetch('api/recommend' , {
+        method : 'GET',
+        headers : {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0"
+        }
+      }); // API 호출
+      if(!res.ok){
+        throw new Error(`HTTP error! status!!!!####: ${res.status}`);
+      }
+      const data = await res.json();
+      setRecommendations(data.recommendData.map(item => item.search_words));
+    } catch (error) {
+      console.log("추천 검색어를 가져오는 데 실패했습니다.",error);
+      setRecommendations([]);
+    }
+  }
 
 
   const fetchConditions = async () => {
@@ -332,6 +357,24 @@ export default function Component() {
   
   const toggleAdvancedSearch = () => {
     setShowAdvancedSearch(!showAdvancedSearch);
+  };
+
+  const handleSearchTermChange = (word) => {
+    return new Promise((resolve) => {
+      setSearchTerm(word);
+      console.log("ccccccccccc",word);
+      resolve();
+    });
+  };
+
+  const handleClick = (word) => {
+    handleSearchTermChange(word).then(() => {
+      // searchTerm이 업데이트된 후에 handleSubmit 호출
+      console.log("dddddddddddd", searchTerm);  // 이제 searchTerm은 업데이트됨
+      // handleSubmit();
+    }).catch((error) => {
+      console.error("Error during search term change:", error);
+    });
   };
 
   return (
@@ -361,6 +404,28 @@ export default function Component() {
               }
             }}
           />
+
+           {/* 추천 검색어 표시 부분 */}
+          <div className="mt-4 w-full">
+            <div className="flex flex-wrap space-x-4 mt-2">
+              {recommendations.length > 0 ? (
+                recommendations.map((word, index) => (
+                  // <li key={index} className="cursor-pointer hover:text-blue-500">{word}</li>
+                <span 
+                  key={index}
+                  className="cursor-pointer hover:text-blue-500"
+                  onClick={() => handleClick(word)}  // 클릭 시 바로 handleSubmit 실행
+                >
+                    {word}
+                </span>
+                ))
+              ) : (
+                // <li>추천 검색어가 없습니다.</li>
+                <span></span>
+              )}
+            </div>
+          </div>
+
           <div className="mt-2 w-full flex flex-col items-end space-y-2"> {/* flex-col and items-end for vertical alignment */}
           <Button variant="outline" onClick={handleSubmit} disabled={loading}>
             {loading ? '저장 중...' : '검색'}
@@ -391,17 +456,20 @@ export default function Component() {
             <div className="flex items-center space-x-4">
               <Label htmlFor="weight">체중 & 키</Label>
               <Input
+                
                 id="weight"
                 placeholder="00 Kg"
                 className="w-24"
                 value={weight}
+                type ="number"
                 onChange={(e) => setWeight(e.target.value)}
               />
-              <Input
+              <Input                
                 id="height"
                 placeholder="00 CM"
                 className="w-24"
                 value={height}
+                type ="number"
                 onChange={(e) => setHeight(e.target.value)}
               />
             </div>
@@ -411,10 +479,12 @@ export default function Component() {
                 id="age"
                 placeholder="00 세"
                 className="w-24"
+                type ="number"
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
               />
             </div>
+            
               <CategorySection
                 title="질병 & 건강 상태"
                 options={{ value: healthOptions, setter: setHealthOptions }}
@@ -475,6 +545,7 @@ export default function Component() {
           referrerPolicy="unsafe-url" 
           browsingtopics="true">
         </iframe>
+        <p className="text-xs space-y-2 content-style">쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</p>
       </div>
       
       {/* <footer className="flex justify-center w-full mt-8">

@@ -1,0 +1,21 @@
+.
+├── README.md
+├── app
+├── components
+├── components.json
+├── jsconfig.json
+├── lib
+├── next.config.mjs
+├── node_modules
+├── package-lock.json
+├── package.json
+├── page
+├── pages
+├── postcss.config.mjs
+├── public
+├── styles
+├── tailwind.config.js
+├── tree copy.txt
+└── tree.txt
+
+9 directories, 10 files

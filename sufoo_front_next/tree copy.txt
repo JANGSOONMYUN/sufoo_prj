@@ -1,0 +1,54 @@
+.
+├── README.md
+├── app
+│   ├── api
+│   │   ├── get_session_id
+│   │   │   └── route.js
+│   │   ├── insert_contents
+│   │   │   └── route.js
+│   │   ├── insert_user_data
+│   │   │   └── route.js
+│   │   ├── recommend
+│   │   │   └── route.js
+│   │   ├── select_conditions
+│   │   │   └── route.js
+│   │   ├── select_contents
+│   │   │   └── route.js
+│   │   └── select_user_data
+│   │       └── route.js
+│   ├── content_page
+│   │   └── [content_id]
+│   │       └── page.js
+│   ├── content_page_test
+│   │   └── [content_id]
+│   │       └── page.js
+│   ├── fonts
+│   │   ├── GeistMonoVF.woff
+│   │   └── GeistVF.woff
+│   ├── globals.css
+│   ├── layout.js
+│   ├── page.js
+│   ├── portfolio
+│   │   └── page.js
+│   ├── sharing_block
+│   │   └── page.js
+│   ├── ui_insert_user_data
+│   │   └── page.js
+│   └── ui_loading
+│       └── page.js
+├── components
+├── components.json
+├── jsconfig.json
+├── lib
+├── next.config.mjs
+├── node_modules
+├── package-lock.json
+├── package.json
+├── page
+├── pages
+├── postcss.config.mjs
+├── public
+├── styles
+├── tailwind.config.js
+├── tree copy.txt
+└── tree.txt

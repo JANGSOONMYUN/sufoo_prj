@@ -28,3 +28,19 @@ export async function createConnection() {
         throw new Error(`DB 연결 오류: ${error.message}`);
     }
 }
+
+
+export async function getRecommendedSarchWords(){
+    try {
+        const connection = await mysql.createConnection(dbConfig);
+        const [rows] = await connection.execute(
+            'SELECT search_words FROM page_info ORDER BY RAND() LIMIT 3'
+        );
+        connection.end();
+
+        const recommendations = rows.map(row => row.search_words);
+        return recommendations;
+    } catch (error) {
+        throw new Error('추천 검색어 조회 오류 : ${error.message}');
+    }
+}

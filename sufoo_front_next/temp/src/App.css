@@ -1,0 +1,370 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+
+/* 청첩장 커스텀 스타일 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Dancing+Script:wght@400;500;600;700&display=swap');
+
+:root {
+  /* 웨딩 테마 색상 */
+  --wedding-primary: #d4af37; /* 골드 */
+  --wedding-secondary: #f8f6f0; /* 크림 */
+  --wedding-accent: #8b4513; /* 브라운 */
+  --wedding-text: #2c2c2c; /* 다크 그레이 */
+  --wedding-light: #fefefe; /* 화이트 */
+  --wedding-pink: #f4c2c2; /* 소프트 핑크 */
+  --wedding-sage: #9caf88; /* 세이지 그린 */
+}
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  line-height: 1.6;
+  color: var(--wedding-text);
+  background: linear-gradient(135deg, var(--wedding-secondary) 0%, var(--wedding-light) 100%);
+  min-height: 100vh;
+}
+
+.wedding-container {
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--wedding-light);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.wedding-section {
+  padding: 2rem 1.5rem;
+  position: relative;
+}
+
+.wedding-title {
+  font-family: 'Dancing Script', cursive;
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: var(--wedding-primary);
+  text-align: center;
+  margin-bottom: 1rem;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.wedding-subtitle {
+  font-size: 1.1rem;
+  font-weight: 300;
+  text-align: center;
+  color: var(--wedding-accent);
+  margin-bottom: 2rem;
+  letter-spacing: 0.5px;
+}
+
+.wedding-divider {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--wedding-primary), transparent);
+  margin: 2rem auto;
+}
+
+.wedding-card {
+  background: var(--wedding-light);
+  border-radius: 15px;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.wedding-button {
+  background: linear-gradient(135deg, var(--wedding-primary), #b8941f);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 25px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+}
+
+.wedding-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+}
+
+.wedding-icon {
+  color: var(--wedding-primary);
+  margin-right: 0.5rem;
+}
+
+.wedding-text {
+  line-height: 1.8;
+  color: var(--wedding-text);
+  text-align: center;
+}
+
+.wedding-date {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--wedding-accent);
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.wedding-location {
+  font-size: 1rem;
+  color: var(--wedding-text);
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+.wedding-names {
+  font-family: 'Dancing Script', cursive;
+  font-size: 1.8rem;
+  font-weight: 500;
+  color: var(--wedding-primary);
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.wedding-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.wedding-gallery img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.wedding-gallery img:hover {
+  transform: scale(1.05);
+}
+
+.wedding-contact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--wedding-secondary);
+  border-radius: 10px;
+  margin: 0.5rem 0;
+}
+
+.wedding-account {
+  background: var(--wedding-secondary);
+  padding: 1rem;
+  border-radius: 10px;
+  margin: 0.5rem 0;
+  text-align: center;
+}
+
+.wedding-guestbook {
+  background: var(--wedding-light);
+  border: 1px solid var(--wedding-primary);
+  border-radius: 10px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.wedding-message {
+  background: var(--wedding-secondary);
+  padding: 1rem;
+  border-radius: 10px;
+  margin: 0.5rem 0;
+  border-left: 4px solid var(--wedding-primary);
+}
+
+.wedding-dday {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--wedding-primary);
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.wedding-ornament {
+  position: absolute;
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+.wedding-ornament.top-left {
+  top: 20px;
+  left: 20px;
+  transform: rotate(-15deg);
+}
+
+.wedding-ornament.bottom-right {
+  bottom: 20px;
+  right: 20px;
+  transform: rotate(15deg);
+}
+
+/* 애니메이션 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wedding-fade-in {
+  animation: fadeInUp 0.8s ease-out;
+}
+
+/* 모바일 최적화 */
+@media (max-width: 480px) {
+  .wedding-section {
+    padding: 1.5rem 1rem;
+  }
+  
+  .wedding-title {
+    font-size: 2rem;
+  }
+  
+  .wedding-card {
+    padding: 1rem;
+  }
+  
+  .wedding-contact {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* 터치 인터페이스 최적화 */
+.wedding-button,
+.wedding-gallery img,
+.wedding-contact button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
