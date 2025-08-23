@@ -6,3 +6,6 @@ venv
 config.json
 .next
 *.mp4
+sufoo_front_next/public/wedding/*.jpeg
+sufoo_front_next/public/wedding/*.jpg
+sufoo_front_next/public/wedding/*.PNG

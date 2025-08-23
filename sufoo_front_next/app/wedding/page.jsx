@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { Heart, MapPin, Phone, Copy, Calendar, Gift, MessageCircle, Music, Users, Camera, X } from 'lucide-react'
+import { Heart, MapPin, Phone, Copy, Calendar, Gift, MessageCircle, Music, Users, Camera, X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -9,59 +9,96 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
 import './wedding.css'
 
-// 웨딩 데이터
-const weddingData = {
-  couple: {
-    groom: {
-      name: "김민수",
-      phone: "010-1234-5678",
-      father: "김아버지",
-      mother: "김어머니",
-      account: "신한은행 110-123-456789"
-    },
-    bride: {
-      name: "이지영",
-      phone: "010-9876-5432",
-      father: "이아버지",
-      mother: "이어머니",
-      account: "국민은행 123-456-789012"
-    }
-  },
-  wedding: {
-    date: "2024년 12월 14일 토요일",
-    time: "오후 2시",
-    venue: "그랜드 웨딩홀",
-    address: "서울시 강남구 테헤란로 123",
-    floor: "3층 그랜드홀",
-    phone: "02-1234-5678"
-  },
-  message: "소중한 분들을 모시고\n저희 두 사람의 새로운 시작을\n함께 축복해 주시기 바랍니다.\n\n여러분의 따뜻한 마음과 축복이\n저희에게는 가장 큰 선물입니다.",
-  gallery: [
-    { id: 1, src: "https://via.placeholder.com/300x200/d4af37/ffffff?text=Wedding+1", alt: "웨딩 사진 1" },
-    { id: 2, src: "https://via.placeholder.com/300x200/f8f6f0/2c2c2c?text=Wedding+2", alt: "웨딩 사진 2" },
-    { id: 3, src: "https://via.placeholder.com/300x200/8b4513/ffffff?text=Wedding+3", alt: "웨딩 사진 3" },
-    { id: 4, src: "https://via.placeholder.com/300x200/d4af37/ffffff?text=Wedding+4", alt: "웨딩 사진 4" },
-    { id: 5, src: "https://via.placeholder.com/300x200/f8f6f0/2c2c2c?text=Wedding+5", alt: "웨딩 사진 5" },
-    { id: 6, src: "https://via.placeholder.com/300x200/8b4513/ffffff?text=Wedding+6", alt: "웨딩 사진 6" }
-  ]
-}
-
 function WeddingPage() {
   const [guestbook, setGuestbook] = useState([])
   const [newMessage, setNewMessage] = useState({ name: '', message: '' })
   const [dDay, setDDay] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [attendance, setAttendance] = useState([])
+  const [attendanceStats, setAttendanceStats] = useState({ totalAttending: 0, totalGuestCount: 0 })
   const [attendanceForm, setAttendanceForm] = useState({ name: '', phone: '', attending: '', guestCount: 1 })
+  const [isLoading, setIsLoading] = useState(false)
+  const [weddingData, setWeddingData] = useState(null)
+  const [galleryData, setGalleryData] = useState(null)
+  const [showAllGallery, setShowAllGallery] = useState(false)
+  const [selectedImage, setSelectedImage] = useState(null)
+
+  // 초기 데이터 로드
+  useEffect(() => {
+    loadWeddingData()
+    loadGuestbook()
+    loadAttendance()
+    loadGalleryData()
+  }, [])
+
+  // 웨딩 데이터 로드
+  const loadWeddingData = async () => {
+    try {
+      const response = await fetch('/api/wedding/config')
+      const result = await response.json()
+      if (result.success) {
+        setWeddingData(result.data)
+      }
+    } catch (error) {
+      console.error('웨딩 데이터 로드 오류:', error)
+    }
+  }
 
   // D-Day 계산
   useEffect(() => {
-    const weddingDate = new Date('2024-12-14')
-    const today = new Date()
-    const diffTime = weddingDate - today
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    setDDay(diffDays)
-  }, [])
+    if (weddingData) {
+      // 날짜 형식에서 실제 날짜 추출 (예: "2024년 12월 14일 토요일" -> "2024-12-14")
+      const dateMatch = weddingData.wedding.date.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/)
+      if (dateMatch) {
+        const [, year, month, day] = dateMatch
+        const weddingDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+        const today = new Date()
+        const diffTime = weddingDate - today
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        setDDay(diffDays)
+      }
+    }
+  }, [weddingData])
+
+  // 방명록 로드
+  const loadGuestbook = async () => {
+    try {
+      const response = await fetch('/api/wedding/guestbook')
+      const result = await response.json()
+      if (result.success) {
+        setGuestbook(result.data)
+      }
+    } catch (error) {
+      console.error('방명록 로드 오류:', error)
+    }
+  }
+
+  // 참석 여부 로드
+  const loadAttendance = async () => {
+    try {
+      const response = await fetch('/api/wedding/attendance')
+      const result = await response.json()
+      if (result.success) {
+        setAttendance(result.data)
+        setAttendanceStats(result.stats)
+      }
+    } catch (error) {
+      console.error('참석 여부 로드 오류:', error)
+    }
+  }
+
+  // 갤러리 데이터 로드
+  const loadGalleryData = async () => {
+    try {
+      const response = await fetch('/api/wedding/gallery')
+      const result = await response.json()
+      if (result.success) {
+        setGalleryData(result.data)
+      }
+    } catch (error) {
+      console.error('갤러리 로드 오류:', error)
+    }
+  }
 
   // 계좌번호 복사 함수
   const copyToClipboard = (text) => {
@@ -77,6 +114,7 @@ function WeddingPage() {
 
   // 지도 열기 함수
   const openMap = (type) => {
+    if (!weddingData) return
     const address = encodeURIComponent(weddingData.wedding.address)
     const urls = {
       kakao: `https://map.kakao.com/link/search/${address}`,
@@ -87,41 +125,95 @@ function WeddingPage() {
   }
 
   // 방명록 추가 함수
-  const addGuestbookEntry = () => {
-    if (newMessage.name && newMessage.message) {
-      setGuestbook([...guestbook, { 
-        ...newMessage, 
-        id: Date.now(),
-        date: new Date().toLocaleDateString()
-      }])
-      setNewMessage({ name: '', message: '' })
-      alert('축하 메시지가 등록되었습니다.')
+  const addGuestbookEntry = async () => {
+    if (!newMessage.name || !newMessage.message) {
+      alert('이름과 메시지를 모두 입력해주세요.')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/wedding/guestbook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newMessage.name,
+          message: newMessage.message
+        })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        setNewMessage({ name: '', message: '' })
+        loadGuestbook() // 새로고침
+        alert(result.message)
+      } else {
+        alert(result.error || '메시지 등록에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('방명록 추가 오류:', error)
+      alert('메시지 등록에 실패했습니다.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
   // 캘린더에 추가 함수
   const addToCalendar = () => {
-    const startDate = '20241214T140000'
-    const endDate = '20241214T170000'
-    const title = encodeURIComponent('김민수 ♥ 이지영 결혼식')
-    const location = encodeURIComponent(weddingData.wedding.address)
+    if (!weddingData) return
     
-    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&location=${location}`
-    window.open(googleCalendarUrl, '_blank')
+    // 날짜 형식에서 실제 날짜 추출
+    const dateMatch = weddingData.wedding.date.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/)
+    if (dateMatch) {
+      const [, year, month, day] = dateMatch
+      const formattedDate = `${year}${month.padStart(2, '0')}${day.padStart(2, '0')}`
+      const startDate = `${formattedDate}T140000`
+      const endDate = `${formattedDate}T170000`
+      const title = encodeURIComponent(`${weddingData.couple.groom.name} ♥ ${weddingData.couple.bride.name} 결혼식`)
+      const location = encodeURIComponent(weddingData.wedding.address)
+      
+      const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&location=${location}`
+      window.open(googleCalendarUrl, '_blank')
+    }
   }
 
   // 참석 여부 확인 함수
-  const submitAttendance = () => {
-    if (attendanceForm.name && attendanceForm.phone && attendanceForm.attending) {
-      setAttendance([...attendance, { 
-        ...attendanceForm, 
-        id: Date.now(),
-        date: new Date().toLocaleDateString()
-      }])
-      setAttendanceForm({ name: '', phone: '', attending: '', guestCount: 1 })
-      alert('참석 여부가 등록되었습니다.')
-    } else {
+  const submitAttendance = async () => {
+    if (!attendanceForm.name || !attendanceForm.phone || !attendanceForm.attending) {
       alert('모든 필수 항목을 입력해주세요.')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/wedding/attendance', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: attendanceForm.name,
+          phone: attendanceForm.phone,
+          attending: attendanceForm.attending,
+          guestCount: attendanceForm.guestCount
+        })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        setAttendanceForm({ name: '', phone: '', attending: '', guestCount: 1 })
+        loadAttendance() // 새로고침
+        alert(result.message)
+      } else {
+        alert(result.error || '참석 여부 등록에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('참석 여부 추가 오류:', error)
+      alert('참석 여부 등록에 실패했습니다.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -133,6 +225,18 @@ function WeddingPage() {
     } else {
       alert('배경음악이 정지됩니다.')
     }
+  }
+
+  // 웨딩 데이터가 로드되지 않았을 때 로딩 표시
+  if (!weddingData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-wedding-primary">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-wedding-accent mx-auto mb-4"></div>
+          <p className="text-wedding-accent">웨딩 정보를 불러오는 중...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -380,28 +484,98 @@ function WeddingPage() {
               <h2 className="text-xl font-semibold text-wedding-accent">갤러리</h2>
             </div>
             
-            <div className="wedding-gallery">
-              {weddingData.gallery.map((image) => (
-                <Dialog key={image.id}>
-                  <DialogTrigger asChild>
+            {galleryData && galleryData.images && (
+              <div className="space-y-4">
+                {/* 갤러리 그리드 */}
+                <div 
+                  className="grid gap-2 rounded-lg overflow-hidden"
+                  style={{
+                    gridTemplateColumns: `repeat(${galleryData.settings.gridCols}, 1fr)`,
+                    gridTemplateRows: `repeat(${galleryData.settings.gridRows}, 1fr)`,
+                    aspectRatio: `${galleryData.settings.gridCols}/${galleryData.settings.gridRows}`
+                  }}
+                >
+                  {galleryData.images
+                    .slice(0, showAllGallery ? galleryData.images.length : galleryData.settings.maxVisible)
+                    .map((image) => (
+                      <div
+                        key={image.id}
+                        className="relative overflow-hidden rounded-lg cursor-pointer hover:scale-105 transition-transform duration-300 bg-gray-100"
+                        style={{
+                          gridColumn: `${image.position.x + 1} / span ${image.gridSize.width}`,
+                          gridRow: `${image.position.y + 1} / span ${image.gridSize.height}`
+                        }}
+                        onClick={() => setSelectedImage(image)}
+                      >
+                        <img
+                          src={image.src}
+                          alt={image.alt}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // 이미지 로딩 실패 시 placeholder로 대체
+                            e.target.src = `https://via.placeholder.com/300x200/d4af37/ffffff?text=Wedding+${image.id}`
+                          }}
+                        />
+                      </div>
+                    ))}
+                </div>
+
+                {/* 더보기 버튼 */}
+                {!showAllGallery && galleryData.images.length > galleryData.settings.maxVisible && (
+                  <div className="flex justify-center mt-4">
+                    <button
+                      onClick={() => setShowAllGallery(true)}
+                      className="relative w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-wedding-primary to-wedding-accent text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110"
+                    >
+                      <Plus size={24} />
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />
+                    </button>
+                  </div>
+                )}
+
+                {/* 모든 이미지 표시 시 접기 버튼 */}
+                {showAllGallery && (
+                  <div className="flex justify-center mt-4">
+                    <Button
+                      onClick={() => setShowAllGallery(false)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      접기
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 갤러리 데이터가 없거나 이미지가 없는 경우 */}
+            {(!galleryData || !galleryData.images || galleryData.images.length === 0) && (
+              <div className="text-center py-8 text-gray-500">
+                <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>곧 아름다운 웨딩 사진이 올라올 예정입니다 💕</p>
+              </div>
+            )}
+
+            {/* 이미지 상세보기 모달 */}
+            {selectedImage && (
+              <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+                <DialogContent className="max-w-4xl w-full p-0">
+                  <div className="relative">
                     <img
-                      src={image.src}
-                      alt={image.alt}
-                      className="cursor-pointer hover:scale-105 transition-transform duration-300"
+                      src={selectedImage.src}
+                      alt={selectedImage.alt}
+                      className="w-full h-auto max-h-[80vh] object-contain"
                     />
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl w-full p-0">
-                    <div className="relative">
-                      <img
-                        src={image.src}
-                        alt={image.alt}
-                        className="w-full h-auto max-h-[80vh] object-contain"
-                      />
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              ))}
-            </div>
+                    <button
+                      onClick={() => setSelectedImage(null)}
+                      className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -421,18 +595,21 @@ function WeddingPage() {
                   placeholder="성함을 입력해주세요"
                   value={newMessage.name}
                   onChange={(e) => setNewMessage({...newMessage, name: e.target.value})}
+                  maxLength={50}
                 />
                 <Textarea
                   placeholder="축하 메시지를 남겨주세요"
                   value={newMessage.message}
                   onChange={(e) => setNewMessage({...newMessage, message: e.target.value})}
                   rows={3}
+                  maxLength={500}
                 />
                 <Button 
                   onClick={addGuestbookEntry}
                   className="wedding-button w-full"
+                  disabled={isLoading}
                 >
-                  메시지 등록
+                  {isLoading ? '등록 중...' : '메시지 등록'}
                 </Button>
               </div>
               
@@ -475,11 +652,13 @@ function WeddingPage() {
                   placeholder="성함을 입력해주세요"
                   value={attendanceForm.name}
                   onChange={(e) => setAttendanceForm({...attendanceForm, name: e.target.value})}
+                  maxLength={50}
                 />
                 <Input
                   placeholder="연락처를 입력해주세요"
                   value={attendanceForm.phone}
                   onChange={(e) => setAttendanceForm({...attendanceForm, phone: e.target.value})}
+                  maxLength={20}
                 />
                 
                 <div className="grid grid-cols-2 gap-2">
@@ -517,18 +696,19 @@ function WeddingPage() {
                 <Button 
                   onClick={submitAttendance}
                   className="wedding-button w-full"
+                  disabled={isLoading}
                 >
-                  참석 여부 등록
+                  {isLoading ? '등록 중...' : '참석 여부 등록'}
                 </Button>
               </div>
               
               <div className="mt-4 p-3 bg-wedding-secondary rounded-lg">
                 <h4 className="font-semibold mb-2">참석 현황</h4>
                 <p className="text-sm">
-                  총 {attendance.filter(a => a.attending === 'yes').length}명 참석 예정
+                  총 {attendanceStats.totalAttending}명 참석 예정
                 </p>
                 <p className="text-sm">
-                  총 인원: {attendance.filter(a => a.attending === 'yes').reduce((sum, a) => sum + a.guestCount, 0)}명
+                  총 인원: {attendanceStats.totalGuestCount}명
                 </p>
               </div>
             </div>

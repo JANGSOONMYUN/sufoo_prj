@@ -120,24 +120,75 @@ body {
   margin: 1.5rem 0;
 }
 
-.wedding-gallery {
+/* 갤러리 그리드 스타일 */
+.wedding-gallery-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  margin-top: 1rem;
+  gap: 0.5rem;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-.wedding-gallery img {
+.wedding-gallery-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f0f0f0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.wedding-gallery-item:hover {
+  transform: scale(1.03);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.wedding-gallery-item img {
   width: 100%;
-  height: 200px;
+  height: 100%;
   object-fit: cover;
-  border-radius: 10px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   transition: transform 0.3s ease;
 }
 
-.wedding-gallery img:hover {
+.wedding-gallery-item:hover img {
   transform: scale(1.05);
+}
+
+/* 더보기 버튼 그라데이션 효과 */
+.wedding-gallery-more {
+  position: relative;
+  background: linear-gradient(135deg, var(--wedding-primary), #b8941f);
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+  transition: all 0.3s ease;
+}
+
+.wedding-gallery-more:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+}
+
+.wedding-gallery-more::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 2px;
+  background: linear-gradient(135deg, var(--wedding-primary), #b8941f, var(--wedding-accent));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: exclude;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.wedding-gallery-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.4) 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.wedding-gallery-more:hover .wedding-gallery-overlay {
+  opacity: 1;
 }
 
 .wedding-contact {
@@ -253,8 +304,8 @@ body {
 
 /* 갤러리 반응형 */
 @media (max-width: 320px) {
-  .wedding-gallery {
-    grid-template-columns: 1fr;
+  .wedding-title {
+    font-size: 2rem;
   }
 }
 

@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 웨딩 데이터 폴더 (개인정보 보호)
+/data
