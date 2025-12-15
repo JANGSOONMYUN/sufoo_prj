@@ -362,7 +362,6 @@ export default function Component() {
   const handleSearchTermChange = (word) => {
     return new Promise((resolve) => {
       setSearchTerm(word);
-      console.log("ccccccccccc",word);
       resolve();
     });
   };
@@ -370,7 +369,6 @@ export default function Component() {
   const handleClick = (word) => {
     handleSearchTermChange(word).then(() => {
       // searchTerm이 업데이트된 후에 handleSubmit 호출
-      console.log("dddddddddddd", searchTerm);  // 이제 searchTerm은 업데이트됨
       // handleSubmit();
     }).catch((error) => {
       console.error("Error during search term change:", error);
@@ -403,6 +401,9 @@ export default function Component() {
                 handleSubmit();
               }
             }}
+            autoComplete="off"
+            data-form-type="other"
+            name="search-term"
           />
 
            {/* 추천 검색어 표시 부분 */}

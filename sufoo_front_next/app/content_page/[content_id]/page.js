@@ -6,6 +6,13 @@ import LoadingScreen from '@/app/ui_loading/page';
 import ReactMarkdown from 'react-markdown'
 import '@/styles/contentPage.css';
 import Link from 'next/link'; // Link 컴포넌트 import
+import {
+  applyLlmStreamPatch,
+  buildInitialLlmViewData,
+  deepClone,
+  normalizeLlmResultForView,
+  postSSE,
+} from '@/lib/llmStreaming';
 
 // import { FaBars } from 'react-icons/fa'; // Font Awesome 아이콘 import
 import { FaBars, FaShareAlt } from 'react-icons/fa'; // Font Awesome 아이콘 import
@@ -23,8 +30,14 @@ export default function Page({ params }) {
   const [loading, setLoading] = useState(true);
   const [noData, setNoData] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
 
   const isFetching = useRef(false);
+  const streamAbortRef = useRef(null);
+  const streamSeqRef = useRef(0);
+  const streamDataRef = useRef(null);
+  const rafScheduledRef = useRef(false);
+  const hasInsertedRef = useRef(false);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -50,6 +63,7 @@ export default function Page({ params }) {
       const startFetch = performance.now();
       if (isFetching.current) return; // 이미 fetch 중이면 실행하지 않음
       isFetching.current = true;
+      hasInsertedRef.current = false;
 
       setLoading(true);
       try {
@@ -66,8 +80,8 @@ export default function Page({ params }) {
               const result = await checkResponse.json();
               if(result && result.pageInfo && result.pageInfo.content_data){
                   console.log("기존 데이터 있음");
-                 const contentData = JSON.parse(result.pageInfo.content_data);
-                 result.include_images = contentData.include_images;
+                 const contentData = normalizeLlmResultForView(JSON.parse(result.pageInfo.content_data));
+                 result.include_images = contentData?.include_images;
                  setResponseData(result);
                  setNoData(false);
                  existingData = true;
@@ -79,36 +93,80 @@ export default function Page({ params }) {
         // 2. 기존 데이터가 없으면 API 호출
         if (!existingData && userId) {
           console.log("기존 데이터 없음");
-          const startLlmCall = performance.now();
-          const response = await fetch('https://fodoit.com:20000/llm', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ content: JSON.stringify(llmJsonData.current) }),
-          });
+          const controller = new AbortController();
+          streamAbortRef.current?.abort();
+          streamAbortRef.current = controller;
+          const mySeq = ++streamSeqRef.current;
 
-        if (!response.ok) {
-          throw new Error(`LLM API Error: ${response.status}`);
-        }
-        const result = await response.json();
-        setResponseData(result);
-          
-        const startInsertData = performance.now();
-          // 인서트된 사용자 데이터로 페이지 정보 삽입 요청
-          await fetch('/api/insert_contents', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: String(userId),
-              searchWords: llmJsonData.current.question,
-              advertiseInfo: "", // 필요한 광고 정보가 있다면 여기에 추가
-              data: JSON.stringify(result), // API 응답 결과를 데이터로 사용
-              url: String(relative_url) // relative_url을 사용
-            }),
-          });
-          const endInsertData = performance.now();
-          console.log(`Insert data duration: ${endInsertData - startInsertData}ms`);
+          const scheduleUiUpdate = () => {
+            if (rafScheduledRef.current) return;
+            rafScheduledRef.current = true;
+            requestAnimationFrame(() => {
+              rafScheduledRef.current = false;
+              if (!streamDataRef.current) return;
+              setResponseData(deepClone(streamDataRef.current));
+            });
+          };
+
+          // 스트리밍 도중에도 현재 UI 레이아웃(폰트/위치) 그대로 렌더링되도록 초기 템플릿을 세팅
+          streamDataRef.current = buildInitialLlmViewData(llmJsonData.current);
+          setResponseData(deepClone(streamDataRef.current));
+          setNoData(false);
+          setIsStreaming(true);
+          setLoading(false); // 전체 로딩 화면 대신 "실시간" 렌더링 시작
+
+          const handleStreamEnd = async (finalDataStr) => {
+            const parsed = normalizeLlmResultForView(JSON.parse(finalDataStr));
+
+            streamDataRef.current = parsed;
+            setResponseData(deepClone(parsed));
+            setIsStreaming(false);
+
+            if (hasInsertedRef.current) return;
+            hasInsertedRef.current = true;
+
+            // 최종 결과만 DB에 저장
+            await fetch('/api/insert_contents', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: String(userId),
+                searchWords: llmJsonData.current.question,
+                advertiseInfo: "",
+                data: JSON.stringify(parsed),
+                url: String(relative_url),
+              }),
+            });
+          };
+
+          await postSSE(
+            'https://fodoit.com:20000/llm_ver3',
+            { content: JSON.stringify(llmJsonData.current) },
+            ({ event, data }) => {
+              if (streamSeqRef.current !== mySeq) return;
+
+              if (event === 'chunk') {
+                try {
+                  const patch = JSON.parse(data);
+                  applyLlmStreamPatch(streamDataRef.current, patch);
+                  scheduleUiUpdate();
+                } catch (e) {
+                  console.warn('chunk JSON 파싱 실패:', e, data);
+                }
+              } else if (event === 'end') {
+                // async 저장 로직은 별도 처리(미-await) + 에러는 내부에서 캐치
+                handleStreamEnd(data).catch((e) => {
+                  console.error('end 처리 실패:', e);
+                  setResponseData({ error: e.message });
+                  setIsStreaming(false);
+                });
+              } else if (event === 'error') {
+                setResponseData({ error: data || 'LLM 스트리밍 오류' });
+                setIsStreaming(false);
+              }
+            },
+            { signal: controller.signal }
+          );
         }
 
         const endApiCall = performance.now();
@@ -116,10 +174,14 @@ export default function Page({ params }) {
 
 
       } catch (error) {
+        // AbortError는 화면 에러로 취급하지 않음(페이지 이동/언마운트 시 정상)
+        if (error?.name === 'AbortError') return;
         console.error('Error:', error);
         setResponseData({ error: error.message });
+        setIsStreaming(false);
       } finally {
         isFetching.current = false; // fetch 완료 후 플래그 초기화
+        // 스트리밍 중에는 이미 loading=false로 전환했으므로, 여기서 강제로 덮어도 무방
         setLoading(false);
         const endFetch = performance.now();
         console.log(`Total fetch duration: ${endFetch - startFetch}ms`);
@@ -130,6 +192,7 @@ export default function Page({ params }) {
 
     return () => {
       window.removeEventListener('scroll',handleScroll);
+      streamAbortRef.current?.abort();
       const endTotal = performance.now();
       console.log(`Total effect duration: ${endTotal - startTotal}ms`);
     };
@@ -185,10 +248,14 @@ export default function Page({ params }) {
         <h2 className="text-xl font-semibold">{item.title}</h2>
 
         {/* 설명 */}
-        <ReactMarkdown className="text-sm space-y-2 content-style">{item.description}</ReactMarkdown>
+        <div className="text-sm space-y-2 content-style">
+          <ReactMarkdown>{item.description}</ReactMarkdown>
+        </div>
 
         {/* 결과 */}
-        <ReactMarkdown className="text-sm space-y-2 content-style">{item.result}</ReactMarkdown>
+        <div className="text-sm space-y-2 content-style">
+          <ReactMarkdown>{item.result}</ReactMarkdown>
+        </div>
 
         {/* 대표 이미지 */}
         {item.image_url && (
@@ -212,8 +279,12 @@ export default function Page({ params }) {
         {item.subject?.map((subjectItem, subIndex) => (
           <div key={subIndex} style={{ marginTop: '10px' }}>
             <h3 className ="space-y-3 text-lg font-semibold">{subjectItem.sub_title}</h3>
-            <ReactMarkdown className="text-sm space-y-2 content-style">{subjectItem.sub_description}</ReactMarkdown>
-            <ReactMarkdown className="text-sm space-y-2 content-style">{subjectItem.sub_result}</ReactMarkdown>
+            <div className="text-sm space-y-2 content-style">
+              <ReactMarkdown>{subjectItem.sub_description}</ReactMarkdown>
+            </div>
+            <div className="text-sm space-y-2 content-style">
+              <ReactMarkdown>{subjectItem.sub_result}</ReactMarkdown>
+            </div>
           </div>
         ))}
       </div>
@@ -251,6 +322,16 @@ export default function Page({ params }) {
       </div>
       {/* 페이지 내용 */}
       <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+        {isStreaming && (
+          <div className="mb-3 text-sm text-gray-500">
+            실시간으로 생성 중입니다...
+          </div>
+        )}
+        {responseData?.error && (
+          <div className="mb-3 text-sm text-red-600">
+            오류: {responseData.error}
+          </div>
+        )}
         {renderContent()}
 
         {/* 공유 섹션 */}
