@@ -118,9 +118,10 @@ def update_prompts_in_chains(json_path, chains=None):
             else:
                 chains[k]['instructions'] += load_txt_data(os.path.join(directory_path, i_data))
         for p_data in v['prompts_data']:
-            # print('0-'*100)
-            # print(p_data)
             if '.txt' not in p_data:
+                if not isinstance(p_data, str):
+                    print('-9'*100)
+                    print(p_data)
                 chains[k]['prompts'] += p_data
             else:
                 chains[k]['prompts'] += load_txt_data(os.path.join(directory_path, p_data))
@@ -289,7 +290,53 @@ def _pre_proc_parallel_chain(entire_chains, subject_list, target_chain_name):
             
         first_key = None
         for i, sub_str in enumerate(subject_list):
+            if isinstance(sub_str, dict):
+                sub_str = json.dumps(sub_str, indent=4, ensure_ascii=False)
+            new_chain_setting = copy.deepcopy(target_chain_setting)
+            chain_name = f'{target_chain_name}_{i}'
+            preset_output_dict = new_chain_setting['output_dict']
             
+            if 'keep_input_output_data' not in new_chain_setting:
+                new_chain_setting['keep_input_output_data'] = []
+            
+            output_dict = {}
+            for _k, _v in preset_output_dict.items():
+                key_name = f'{_k}_{i}'
+                output_dict[key_name] = _v
+                new_chain_setting['keep_input_output_data'].append(key_name)
+                post_input_keys.append(key_name)
+            
+            new_chain_setting['prompts_data'].append(sub_str)
+                
+            new_chain_setting['type'] = 'prompts'
+            new_chain_setting['output_dict'] = output_dict
+            
+            entire_chains[chain_name] = new_chain_setting
+            
+            if first_key is None:
+                first_key = chain_name
+                replaced_chains[chain_name] = {}
+            else:
+                replaced_chains[chain_name] = None
+        
+    except Exception as e:
+        # Print the exception and the traceback details
+        print(f"Error: {e}")
+        traceback.print_exc()
+        
+    return replaced_chains, post_input_keys
+
+def _pre_proc_parallel_chain_pydantic(entire_chains, subject_list, target_chain_name):
+    post_input_keys = []
+    replaced_chains = {}
+    
+    try:
+        target_chain_setting = entire_chains[target_chain_name]
+            
+        first_key = None
+        for i, sub_str in enumerate(subject_list):
+            if isinstance(sub_str, dict):
+                sub_str = json.dumps(sub_str, indent=4, ensure_ascii=False)
             new_chain_setting = copy.deepcopy(target_chain_setting)
             chain_name = f'{target_chain_name}_{i}'
             preset_output_dict = new_chain_setting['output_dict']
@@ -326,14 +373,14 @@ def _pre_proc_parallel_chain(entire_chains, subject_list, target_chain_name):
 
 def set_parallel_chain_builder(entire_chains, subject_list, chain_process, target_chain_name):
     try:
-        if _is_target_chain_exist(chain_process, target_chain_name) is False:
-            return
+        if not _is_target_chain_exist(chain_process, target_chain_name):
+            return None, None
         
         replaced_chains, post_input_keys = _pre_proc_parallel_chain(entire_chains, subject_list, target_chain_name)
         post_input_dict = {}
         for k in post_input_keys:
             post_input_dict[k] = None
-
+            
         post_chains = _get_post_related_chains(chain_process, target_chain_name)
         if post_chains is not None:
             for k, v in post_chains.items():

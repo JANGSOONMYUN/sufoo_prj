@@ -9,14 +9,14 @@ import string
 import traceback
 from datetime import datetime
 import pytz
-from typing import List, Dict, Any
+from typing import Dict, Any, Tuple, Type, List
 
 import openai
 from openai import OpenAI
 from transformers import GPT2Tokenizer
 from get_config import get_api_key
 from get_prompts import load_chain_setting
-from llm_config import GPTConfig
+from llm_config import LLMConfig
 from modules.utils import fix_partial_json, remove_comma_before_bracket
 from modules.subject_module import wrap_subjects, regen_chain, wrap_reports
 
@@ -29,6 +29,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_vertexai import ChatVertexAI, VertexAI
 # from langchain_google_vertexai import HarmBlockThreshold, HarmCategory
 from langchain_core.output_parsers import StrOutputParser
+from pydantic import BaseModel, create_model, Field, conint, confloat
+from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -96,6 +98,64 @@ def write_log(message, log_dir='log/error/'):
           print(f"로그 파일 생성 실패: {e}")
           pass
 
+
+def create_pydantic_model_from_json(gemini_json_schema: Dict[str, Any]) -> Type[BaseModel]:
+    """
+    Gemini 스타일의 JSON 스키마로부터 Pydantic 모델을 동적으로 생성합니다.
+
+    Args:
+        gemini_json_schema: Gemini 스타일의 JSON 스키마 딕셔너리.
+
+    Returns:
+        동적으로 생성된 Pydantic 모델 클래스.
+    """
+
+    def map_data_type_to_python(data_type: str, property_schema: Dict[str, Any]) -> Type:
+        """Gemini 타입을 Python 타입으로 매핑합니다."""
+        data_type = data_type.lower()
+        if data_type == "integer" or data_type == "int":
+            if "minimum" in property_schema and "maximum" in property_schema:
+                return conint(ge=property_schema["minimum"], le=property_schema["maximum"])
+            return int
+        elif data_type == "number" or data_type == "float" or data_type == "num": # Gemini number 는 float 를 의미하는 경우가 많음. 필요에 따라 수정
+            if "minimum" in property_schema and "maximum" in property_schema:
+                return confloat(ge=property_schema["minimum"], le=property_schema["maximum"])
+            return float
+        elif data_type == "string" or data_type == "str":
+            return str
+        elif data_type == "boolean" or data_type == "bool":
+            return bool
+        elif data_type == "array" or data_type == "list" or data_type == "list[str]": #List 처리
+            items_schema = property_schema.get("items", {}) # items 스키마 가져오기
+            items_type = items_schema.get("type", "string") # 기본적으로 string list 로 처리, 필요에 따라 조정
+            if items_type == "object" or items_type == "obj" or items_type == "json": # List 내부 item 이 object 인 경우! (핵심 변경 부분)
+                inner_model = create_pydantic_model_from_json(items_schema) # items_schema 자체가 object 스키마
+                return List[inner_model] # List[PydanticModel] 반환
+            else: # List[primitive type] or List[other object] (재귀적으로 object list 도 가능)
+                python_item_type = map_data_type_to_python(items_type, items_schema) #items type 도 재귀적으로 처리
+                return List[python_item_type]
+        elif data_type == "object" or data_type == "obj" or data_type == "json": # Nested Object 처리 (재귀 호출)
+            return create_pydantic_model_from_json(property_schema) #object 자체를 재귀적으로 모델로 만듬
+        else:
+            return str  # 기본적으로 string type
+
+    fields: Dict[str, Tuple[Type, Any]] = {}
+
+    properties = gemini_json_schema.get("properties", {}) # 최상위 properties 를 가져옴
+    for field_name, property_schema in properties.items():
+        print('property_schema')
+        print(property_schema)
+        data_type = property_schema.get("type")
+        if not data_type:
+            continue # type 이 없으면 스킵 (혹은 에러 처리)
+
+        python_type = map_data_type_to_python(data_type, property_schema)
+        field_description = property_schema.get("description", field_name) #description 없으면 field name 사용
+        fields[field_name] = (python_type, Field(description=field_description))
+
+    model: Type[BaseModel] = create_model("DynamicStructuredOutputModel", **fields) # 모델 이름 (원하는대로 변경 가능)
+    return model
+
 # Define an in-memory chat message history
 class InMemoryHistory(BaseChatMessageHistory):
     def __init__(self):
@@ -127,8 +187,10 @@ class InMemoryHistory(BaseChatMessageHistory):
             return {"type": "human", "content": message.content, "additional_kwargs": message.additional_kwargs}
         elif isinstance(message, SystemMessage):
             return {"type": "system", "content": message.content, "additional_kwargs": message.additional_kwargs}
+        elif isinstance(message, str):
+            return {"type": "human", "content": message, "additional_kwargs": ""}
         else:
-            raise ValueError(f"Unsupported message type: {type(message)}")
+            raise ValueError(f"Unsupported message type: {type(message)}\nmessage: {message}")
 
     def save_to_json(self, file_path: str, user_id: str) -> None:
         if 'test' not in user_id.lower():
@@ -150,7 +212,7 @@ class InMemoryHistory(BaseChatMessageHistory):
         
 
 class LangChainModule():
-    def __init__(self, config: GPTConfig) -> None:
+    def __init__(self, config: LLMConfig) -> None:
         self.is_running = False
         
         self.config = config
@@ -170,11 +232,8 @@ class LangChainModule():
         self.init_llm(self.config.model)
         
         
-    def params(self, config: GPTConfig):
+    def params(self, config: LLMConfig):
         self.config = config
-    
-    def clear_data(self):
-        self.keep_input_output_data = {}
             
     def get_model_company(self, model):
         if 'gpt' in model:
@@ -184,6 +243,61 @@ class LangChainModule():
         else:
             assert False, 'Currently gpt or gemini can be used only, in get_model_company()'
         
+    def compute_token_price(self, model_name, input_tokens, output_tokens, tot_input_tokens, tot_output_tokens):
+        # self.api_info
+        input_price = None
+        output_price = None
+        usd_to_krw = self.api_info['usd_to_krw']
+        result = {
+                    'current_token_info': {
+                        'input_tokens': input_tokens,
+                        'output_tokens': output_tokens,
+                        'input_cost': None,
+                        'output_cost': None,
+                        'total_cost': None
+                        },
+                    'cumulative_token_info': {
+                        'input_tokens': tot_input_tokens,
+                        'output_tokens': tot_output_tokens,
+                        'input_cost': None,
+                        'output_cost': None,
+                        'total_cost': None
+                    },
+                    'price_per_1M_input_token': None,
+                    'price_per_1M_output_token': None,
+                    'usd_to_krw': usd_to_krw,
+                    'model_name': model_name,
+                }
+        
+        def _compute_cost(result, key_name, input_price, output_price, usd_to_krw):
+            result[key_name]['input_cost'] = round(result[key_name]['input_tokens'] * input_price / 1000000, 10)
+            result[key_name]['output_cost'] = round(result[key_name]['output_tokens'] * output_price / 1000000, 10)
+            result[key_name]['total_cost'] = round(result[key_name]['input_cost'] + result[key_name]['output_cost'], 10)
+            result[key_name]['input_cost_krw'] = round(result[key_name]['input_cost'] * usd_to_krw, 5)
+            result[key_name]['output_cost_krw'] = round(result[key_name]['output_cost'] * usd_to_krw, 5)
+            result[key_name]['total_cost_krw'] = round(result[key_name]['total_cost'] * usd_to_krw, 5)
+            
+        try:
+            if model_name in self.api_info['pricing']:
+                input_price = self.api_info['pricing'][model_name]['input']
+                output_price = self.api_info['pricing'][model_name]['output']
+            else:
+                for k, v in self.api_info['pricing'].items():
+                    if model_name in k:
+                        input_price = v['input']
+                        output_price = v['output']
+                        break
+            result['price_per_1M_input_token'] = input_price
+            result['price_per_1M_output_token'] = output_price
+            
+            _compute_cost(result, 'current_token_info', input_price, output_price, usd_to_krw)
+            _compute_cost(result, 'cumulative_token_info', input_price, output_price, usd_to_krw)
+            
+        except Exception as e:
+            print(e)
+        
+        return result
+    
     def init_llm(self, model=None):
         model = model if model is not None else self.config.model
         self.get_model_company(model)
@@ -391,6 +505,11 @@ class LangChainModule():
         messages = [sys_msg]
         if use_history is True and save_history is False:
             history = self.get_session_history(user_id, conversation_id)
+            # Here very IMPORTANT 
+            # if the history is string, it may occur problems; should be wrapped by HumanMessage or AIMessage
+            for hi, h in enumerate(history):
+                if isinstance(h, str):
+                    history[hi] = HumanMessage(h)
             messages.extend(history.messages)
         elif save_history:
             messages.append(msg_plchldr)
@@ -403,13 +522,22 @@ class LangChainModule():
                 messages=messages,
                 input_variables=list(input_dict.keys())
             )
-        else:
+        elif output_parser_type == 'json_legacy':
             output_parser = self.set_json_output(output_dict)
             prompt_template = ChatPromptTemplate(
                 messages=messages,
                 input_variables=list(input_dict.keys()),
                 partial_variables={"format_instructions": output_parser.get_format_instructions()}
             )
+        else:
+            dynamic_model = create_pydantic_model_from_json(output_dict)
+            output_parser = PydanticOutputParser(pydantic_object=dynamic_model)
+            prompt_template = ChatPromptTemplate(
+                messages=messages,
+                input_variables=list(input_dict.keys()),
+                partial_variables={"format_instructions": output_parser.get_format_instructions()}
+            )
+            
             
         chain = (
             prompt_template
@@ -444,21 +572,38 @@ class LangChainModule():
             return chain_with_history, output_parser
         return chain, output_parser
       
-    def run_chain(self, main_chain, input_dict, config_dict=None, is_stream=False):
-        # wrap config with configurable
-        if 'configurable' not in config_dict:
-            config_dict = {"configurable": config_dict.copy()}
-        if config_dict is None:
-            if is_stream:
-                result = main_chain.stream(input_dict)
+    def run_chain(self, main_chain, input_dict, config_dict=None, is_stream=False):    
+        try:
+            # wrap config with configurable
+            if 'configurable' not in config_dict:
+                config_dict = {"configurable": config_dict.copy()}
+            if config_dict is None:
+                if is_stream:
+                    result = main_chain.stream(input_dict)
+                else:
+                    result = main_chain.invoke(input_dict)
             else:
-                result = main_chain.invoke(input_dict)
-        else:
-            if is_stream:
-                result = main_chain.stream(input_dict, config=config_dict)
-            else:
-                result = main_chain.invoke(input_dict, config=config_dict)
-        return result
+                if is_stream:
+                    result = main_chain.stream(input_dict, config=config_dict)
+                else:
+                    result = main_chain.invoke(input_dict, config=config_dict)
+            return result
+        except KeyError as e:
+            if str(e) == "'type'":  # KeyError가 'type'인 경우에만 처리
+                print(f"원래 에러 메시지: {e}") #원래 에러 메시지 출력
+                traceback.print_exc() # traceback 메시지 (에러 발생 위치) 출력
+                print('')
+                print("[ERROR] 프롬프트에 잘못된 형식의 문자가 있습니다. (중괄호 여부 확인)") #추가 메시지 출력
+                print('')
+                
+            else:  #다른 KeyError는 그대로 다시 발생
+                raise e
+        except Exception as e: #KeyError외 다른 에러 처리
+            print(f"[ERROR] 다른 에러 발생: {e}")
+            print(f'input_dict: {input_dict}')
+            print(main_chain)
+            traceback.print_exc()
+            raise e
 
     def combine_parallel_chain(self, chains, chain_names=None):
         chain_dict = {}
@@ -542,7 +687,6 @@ class LangChainModule():
         callback_func = callback['func']
         callback_start_end = callback['func_start_end']
         class_instance = callback['instance']
-        func_name = return_func_name
         stream_step = 50
                 
         i = 0
@@ -564,7 +708,7 @@ class LangChainModule():
                         return
                     for dk, dv in dict_from_stream.items():
                         for di in dv:
-                            callback_func(di, class_instance, func_name)
+                            callback_func(di, class_instance, return_func_name)
             except Exception as e:
                 error_message = traceback.format_exc()
                 print(f'{e}, in _send_stream in stream_handler\n{error_message}')
@@ -617,13 +761,13 @@ class LangChainModule():
                     # check special characters and check if it is end
                     stream_found, special_key_storage = _replace_special_str(content, special_key_storage)
                     if len(special_key_storage) > 0 and stream_found and special_key_storage != '[END]':
-                        callback_func(special_key_storage, class_instance, func_name)
+                        callback_func(special_key_storage, class_instance, return_func_name)
                     stream_found = True
                         
                 elif special_key_storage == '[END]':
                     stream_found = False
                     special_key_storage = ''
-                    callback_func('|', class_instance, func_name)
+                    callback_func('|', class_instance, return_func_name)
                 
             except Exception as e:
                 print(f'{e}, in _send_stream_char in stream_handler')
@@ -688,19 +832,48 @@ class LangChainModule():
         return ai_msg_contents
     
     # for keep_input_output_data
-    def set_input_data(self, chain_settings, chain_key):
+    def set_input_data(self, chain_settings, chain_key, prev_output=None):
         input_dict = chain_settings[chain_key]['input_dict']
 
         # load data if needed
         for ik, iv in input_dict.items():
             if ik in self.keep_input_output_data:
                 chain_settings[chain_key]['input_dict'][ik] = self.keep_input_output_data[ik]
+            if ik in self.keep_optional_data:
+                chain_settings[chain_key]['input_dict'][ik] = self.keep_optional_data[ik]
+            if ik in prev_output:
+                chain_settings[chain_key]['input_dict'][ik] = prev_output[ik]
+        
+        # overwrite: priority of prev_output should be higher than keep_input_output_data
+        if chain_key in prev_output:
+            chain_settings[chain_key]['input_dict'].update(prev_output[chain_key])
+        else:
+            for pk, pv in prev_output.items():
+                if isinstance(pv, dict):
+                    for sub_k, sub_v in pv.items():
+                        if sub_k in chain_settings[chain_key]['input_dict']:
+                            chain_settings[chain_key]['input_dict'].update(pv)
+            # chain_settings[chain_key]['input_dict'].update(prev_output)
+                
         # keep input data if setting exists
-        if 'keep_input_output_data' in chain_settings[chain_key] and chain_settings[chain_key]['keep_input_output_data'] is not None:
+        if 'keep_input_output_data' in chain_settings[chain_key] and chain_settings[chain_key]['keep_input_output_data'] is not None:               
             for keep_key in chain_settings[chain_key]['keep_input_output_data']:
+                if prev_output is not None:
+                    if keep_key in prev_output:
+                        target_dict = prev_output
+                        self.keep_input_output_data.update({keep_key: target_dict[keep_key] if isinstance(target_dict[keep_key], str) else copy.deepcopy(target_dict[keep_key])})
+                                            
+                    # if previous values are wrapped by chain name
+                    for prev_name, prev_val in prev_output.items():
+                        target_dict = prev_val
+                        if isinstance(prev_val, dict):
+                            if keep_key in prev_val:
+                                self.keep_input_output_data.update({keep_key: target_dict[keep_key] if isinstance(target_dict[keep_key], str) else copy.deepcopy(target_dict[keep_key])})
+                    
                 if keep_key not in input_dict:
                     continue
-                self.keep_input_output_data.update({keep_key: input_dict[keep_key] if isinstance(input_dict[keep_key], str) else copy.deepcopy(input_dict[keep_key])})
+                target_dict = input_dict
+                self.keep_input_output_data.update({keep_key: target_dict[keep_key] if isinstance(target_dict[keep_key], str) else copy.deepcopy(target_dict[keep_key])})
 
     def update_optional_data(self, chain_settings, chain_key):
         if 'optional_data' in chain_settings[chain_key] and chain_settings[chain_key]['optional_data'] is not None:
@@ -720,6 +893,7 @@ class LangChainModule():
                         continue
                 if opt_key not in self.keep_input_output_data:
                     self.keep_input_output_data.update(self.keep_optional_data)
+                    # self.keep_input_output_data[opt_key] = self.keep_optional_data[opt_key]
                     chain_settings[chain_key]['input_dict'][opt_key] = self.keep_input_output_data[opt_key]
         
     # for keep_input_output_data
@@ -749,26 +923,36 @@ class LangChainModule():
         chains = {}
         map_input_dict = {}
         callback_func, callback_start_end, class_instance = None, None, None
-        func_name = ''
+        callback_token = None
+        return_func_name = ''
         if callback is not None:
             assert isinstance(callback, dict), 'callback should be dictionary to be handled. in stream_handler'
             # if instance does not exist, the function will be run in random instance.          
             callback_func = callback['func']
             callback_start_end = callback['func_start_end']
+            callback_token = callback['func_token_usage']
             class_instance = callback['instance']
             if 'func_name' in callback:
-                func_name = callback['func_name']
+                return_func_name = callback['func_name']
             if 'return_func_name' in chain_settings[prompt_chain_keys[0]]:
-                func_name = chain_settings[prompt_chain_keys[0]]['return_func_name']
+                return_func_name = chain_settings[prompt_chain_keys[0]]['return_func_name']
         use_start_end_callback = True
         start_end_suffix = ''
         for k in prompt_chain_keys:
             self.update_optional_data(chain_settings=chain_settings, chain_key=k)
             
-            chain_settings[k]['input_dict'].update(prev_output)
+            input_dict = chain_settings[k]['input_dict']
+            orig_input_keys = list(chain_settings[k]['input_dict'].keys())
+            
+            
+            if k in prev_output:
+                chain_settings[k]['input_dict'].update(prev_output[k])
+            else:
+                chain_settings[k]['input_dict'].update(prev_output)
+
+            
             instructions = chain_settings[k]['instructions']
             prompts = chain_settings[k]['prompts']
-            input_dict = chain_settings[k]['input_dict']
             output_dict = chain_settings[k]['output_dict']
             output_parser_type = chain_settings[k].get('output_parser_type', 'json')
             output_stream = chain_settings[k]['output_stream']
@@ -780,12 +964,15 @@ class LangChainModule():
             use_history = chain_settings[k]['use_history']
             save_history = chain_settings[k]['save_history']
 
-            self.set_input_data(chain_settings=chain_settings, chain_key=k)
+            self.set_input_data(chain_settings=chain_settings, chain_key=k, prev_output=prev_output)
 
             _config = chain_settings[k]['config']
             user_id = _config['configurable']['user_id']
             conversation_id = _config['configurable']['conversation_id']
-            map_input_dict.update(input_dict)
+
+            # to remove unecessary input
+            for in_key in orig_input_keys:
+                map_input_dict[in_key] = input_dict[in_key]
 
             chain, output_parser = self.process_chain(model_name=model_name, instructions=instructions, prompts=prompts,
                         input_dict=input_dict, output_parser_type=output_parser_type, output_dict=output_dict, 
@@ -802,22 +989,36 @@ class LangChainModule():
                 else:
                     return {'tmp_key(check_output_dict_in_chain_setting)': parsed_output}
             return parsed_output
-        
+
         # Send [START] signal
         if callback is not None and self.is_retrying is False and use_start_end_callback is True:
-            callback_start_end(True, class_instance, start_end_suffix, func_name)
-        
-        for in_k, in_v in map_input_dict.items():
-            map_input_dict[in_k] = json.dumps(in_v, ensure_ascii=False)
+            callback_start_end(True, class_instance, start_end_suffix, return_func_name)
 
+
+        for in_k, in_v in map_input_dict.items():
+            converted_v = ''
+            
+            # why need to be handled by if
+            # details = "Unable to submit request because it must include at least one parts field, which describes the prompt input. Learn more: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini"
+            if isinstance(in_v, dict):
+                converted_v = json.dumps(in_v, ensure_ascii=False)
+            elif in_v is None or (isinstance(in_v, str) and len(in_v) == 0):
+                converted_v = ' '
+            elif isinstance(in_v, bool):
+                converted_v = str(in_v)
+            else:
+                converted_v = in_v
+            map_input_dict[in_k] = converted_v
+            
+        
         try:
             _result = self.run_chain(main_chain=runnable_chain, input_dict=map_input_dict, config_dict=_config, is_stream=output_stream)
             
             if output_stream:
-                result = self.stream_handler(result=_result, prompt_chain_keys=prompt_chain_keys, output_dict=output_dict, callback=callback, stream_type=stream_type, return_func_name=func_name)
+                result = self.stream_handler(result=_result, prompt_chain_keys=prompt_chain_keys, output_dict=output_dict, callback=callback, stream_type=stream_type, return_func_name=return_func_name)
             else:
                 result = _result
-                
+
             parsed_result = None
             # apply parser
             # Access the parsed output and response metadata
@@ -832,11 +1033,16 @@ class LangChainModule():
                     result[pk].content = remove_comma_before_bracket(result[pk].content)
                     # from langchain_core.exceptions import OutputParserException
                     # raise OutputParserException("테스트 에러 테스트")
+
+                    # print('%'*100)
+                    # print(result[pk].content)
+                    # print('%'*100)
+
                     parsed_output = _parser.parse(result[pk].content)
-                    
+
                     # parse again by parse type (json or str)
                     parsed_result[pk] = _parse_by_type(parsed_output=parsed_output, _output_parser_type=_output_parser_type, _output_type=_output_type, _output_dict=_output_dict)
-                    
+
             else:
                 pk = prompt_chain_keys[0]
                 _parser = chains[pk]['output_parser']
@@ -849,14 +1055,14 @@ class LangChainModule():
                 parsed_output = _parser.parse(result.content)
                 # parse again by parse type (json or str)
                 parsed_result = _parse_by_type(parsed_output=parsed_output, _output_parser_type=_output_parser_type, _output_type=_output_type, _output_dict=_output_dict)
-            
+
+            print('%'*100)
             print(' ---- parsed_result ---- ')
             print(parsed_result)
-
+            print('%'*100)
             # keep data
             for pk in prompt_chain_keys:
                 parsed_output = parsed_result[pk] if len(chains) > 1 else parsed_result
-                
                 self.update_data(chain_settings=chain_settings, chain_key=pk, output_result=parsed_output, input_dict=input_dict)
 
         except Exception as e:
@@ -875,7 +1081,7 @@ class LangChainModule():
                 
                 write_log(message=self.last_msg)
                 if callback_func is not None:
-                    callback_func({'error_msg': self.last_msg}, class_instance, func_name, 4000)
+                    callback_func({'error_msg': self.last_msg}, class_instance, return_func_name, 4000)
 
                 return self.last_msg
 
@@ -884,10 +1090,14 @@ class LangChainModule():
         # response_metadata = result.response_metadata
         user_id_set = set()
         conv_id_set = set()
+        token_price = {}
         for k in prompt_chain_keys:
+            model_name = chain_settings[k]['model']
             _config = chain_settings[k]['config']
-            if _config['configurable']['user_id'] in user_id_set and _config['configurable']['conversation_id'] in conv_id_set:
-                continue
+            max_input_tokens = chain_settings[k].get('max_input_tokens', self.max_input_tokens)
+            
+            # if _config['configurable']['user_id'] in user_id_set and _config['configurable']['conversation_id'] in conv_id_set:
+            #     continue
             user_id_set.add(_config['configurable']['user_id'])
             conv_id_set.add(_config['configurable']['conversation_id'])
             
@@ -896,17 +1106,24 @@ class LangChainModule():
                 _result = result[k].copy()
                 
             # to unify differen llm models (openai, google, ...)
-            _result = self.unify_metadata(_result)
-                
+            _result = self.unify_and_sum_metadata(_result)
+            #
+
             response_metadata = _result.response_metadata
             token_usage = response_metadata['token_usage']
             prompt_tokens = token_usage['prompt_tokens']
             completion_tokens = token_usage['completion_tokens']
+            
+            # compute token price
+            token_price[k] = self.compute_token_price(model_name, prompt_tokens, completion_tokens, 
+                                     self.total_tokens['prompt_tokens'], self.total_tokens['completion_tokens'])
+            
             # if the conversation history is too large, it reduces oldest chat
+            print(f'[{k}] prompt_tokens: {prompt_tokens}/{max_input_tokens}')
             self.reduce_history(user_id=_config['configurable']['user_id'], conversation_id=_config['configurable']['conversation_id'], max_chat=200)
-            print(f'prompt_tokens: {prompt_tokens}/{self.max_input_tokens}')
+            
             # if prompt tokens is too large, delete ...
-            if prompt_tokens > self.max_input_tokens: # maximum input tokens is 128000 for gpt-4o
+            if prompt_tokens > max_input_tokens: # maximum input tokens is 128000 for gpt-4o
                 self.delete_history(user_id=_config['configurable']['user_id'], conversation_id=_config['configurable']['conversation_id'], del_num=4)
                 print(f'prompt_tokens: {prompt_tokens}')
                 
@@ -920,66 +1137,75 @@ class LangChainModule():
                 output_type = chain_settings[k]['output_type']
                 output = chain_settings[k]['output']
                 
+                return_func_name_each = ''
+                if 'return_func_name' in chain_settings[k]:
+                    return_func_name_each = chain_settings[k]['return_func_name']
+                
                 output_parser_type =   chain_settings[k].get('output_parser_type', 'json')
                 output_dict =          chain_settings[k]['output_dict']
-                
+                         
+                return_val = ''       
                 if callback_flag is False or output is None or output == '' or len(output) == 0:
-                    continue
-
-                # target_result = parsed_result
-                # # print(type(target_result), target_result)
-                # if len(chains) > 1:
-                #     target_result = parsed_result[k]
-                target_result = parsed_result[k] if len(chains) > 1 else parsed_result
-                
-
-                return_val = None
-                if output == 'all' and isinstance(target_result, dict):
-                    output = []
-                    for output_k in target_result.keys():
-                        output.append(output_k)
+                    pass
+                else:
+                    # target_result = parsed_result
+                    # # print(type(target_result), target_result)
+                    # if len(chains) > 1:
+                    #     target_result = parsed_result[k]
+                    target_result = parsed_result[k] if len(chains) > 1 else parsed_result
                     
-                if output_type == 'str':
-                    return_val = ''
-                    if output_parser_type == 'json':
-                        for o in output:
-                            return_val += ('\n' + target_result[o])
-                    else:
-                        return_val = target_result
-                elif output_type == 'json':
-                    return_val = {}
-                    for o in output:
-                        return_val[o] = target_result[o]
-                        try:
-                            if 'detail_report' in target_result:
-                                # tmp
-                                print('!'*200)
-                                print('!'*50, 'This part must be modified. This is only for SAJU with detail_report')
-                                print('!'*200)
-                                if not isinstance(target_result[o], dict):
-                                    # target_result[o] = json.loads(target_result[o])
-                                    target_result[o] = json.dumps(target_result[o], ensure_ascii=False)
-                                if 'title' not in target_result[o]:
-                                    raise Exception('title is not in detail_report')
-                                return_val[o] = target_result[o]
-                        except Exception as e:
-                            if max_extra_tries > 0:
-                                print(f"Unknown error at run_chain_tree() while sending detail_report: {e}, \nmax_extra_tries:{max_extra_tries}")
-                                self.is_retrying = True
-                                return self.run_prompt_chain(chain_settings=chain_settings, prompt_chain_keys=prompt_chain_keys, prev_output=prev_output, callback=callback, max_extra_tries=max_extra_tries-1)
-                            else:
-                                self.last_msg = "죄송합니다. 시스템에 문제가 생겼습니다. 다시 입력해주세요."
-                                print(f"Unknown error at run_chain_tree(): {e}, \n{self.last_msg} \nmax_extra_tries:{max_extra_tries}")
-                                return self.last_msg
-                if callback is not None:
-                    callback_func(return_val, class_instance, func_name)
 
+                    if output == 'all' and isinstance(target_result, dict):
+                        output = []
+                        for output_k in target_result.keys():
+                            output.append(output_k)
+                        
+                    if output_type == 'str':
+                        return_val = ''
+                        if output_parser_type == 'json':
+                            for o in output:
+                                return_val += ('\n' + target_result[o])
+                        else:
+                            return_val = target_result
+                    elif output_type == 'json':
+                        return_val = {}
+                        for o in output:
+                            return_val[o] = target_result[o]
+                            try:
+                                if 'detail_report' in target_result:
+                                    # tmp
+                                    print('!'*200)
+                                    print('!'*50, 'This part must be modified. This is only for SAJU with detail_report')
+                                    print('!'*200)
+                                    if not isinstance(target_result[o], dict):
+                                        # target_result[o] = json.loads(target_result[o])
+                                        target_result[o] = json.dumps(target_result[o], ensure_ascii=False)
+                                    if 'title' not in target_result[o]:
+                                        raise Exception('title is not in detail_report')
+                                    return_val[o] = target_result[o]
+                            except Exception as e:
+                                if max_extra_tries > 0:
+                                    print(f"Unknown error at run_chain_tree() while sending detail_report: {e}, \nmax_extra_tries:{max_extra_tries}")
+                                    self.is_retrying = True
+                                    return self.run_prompt_chain(chain_settings=chain_settings, prompt_chain_keys=prompt_chain_keys, prev_output=prev_output, callback=callback, max_extra_tries=max_extra_tries-1)
+                                else:
+                                    self.last_msg = "죄송합니다. 시스템에 문제가 생겼습니다. 다시 입력해주세요."
+                                    print(f"Unknown error at run_chain_tree(): {e}, \n{self.last_msg} \nmax_extra_tries:{max_extra_tries}")
+                                    return self.last_msg
+                    if callback is not None:
+                        callback_func(return_val, class_instance, return_func_name_each)
+                        
+                if callback is not None:
+                    time.sleep(0.05)
+                    callback_token(token_price[k], class_instance, return_func_name_each)
                 self.last_msg = return_val
         
         # Send [END] signal
         if callback is not None and use_start_end_callback is True:
-            callback_start_end(False, class_instance, start_end_suffix, func_name)
+            callback_start_end(False, class_instance, start_end_suffix, return_func_name)
         # print(json.dumps(parsed_result, indent=4,  ensure_ascii=False))
+        
+        
         return parsed_result
     
     def run_func_chain(self, chain_settings, func_chain_keys, prev_output={'question': 'say anything'}, callback=None):
@@ -988,30 +1214,23 @@ class LangChainModule():
             for k in func_chain_keys:
                 self.update_optional_data(chain_settings=chain_settings, chain_key=k)
                 
-                for in_name in chain_settings[k]['input_dict'].keys():
+                input_dict = chain_settings[k]['input_dict']
+                for in_name in input_dict.keys():
                     for prev_name, prev_val in prev_output.items():
-                        # print(prev_val)
                         if in_name == prev_name:
-                            chain_settings[k]['input_dict'][in_name] = prev_val
+                            input_dict[in_name] = prev_val
+                            
                         if isinstance(prev_val, dict):
                             for parallel_k, parallel_v in prev_val.items():
                                 if in_name == parallel_k:
-                                    chain_settings[k]['input_dict'][in_name] = parallel_v
-                            
+                                    input_dict[in_name] = parallel_v
+    
                 func_name = chain_settings[k]['func_name']
                 output_dict = chain_settings[k]['output_dict']
                 start_end_suffix = chain_settings[k]['start_end_suffix']
+      
+                self.set_input_data(chain_settings=chain_settings, chain_key=k, prev_output=prev_output)
                 input_dict = chain_settings[k]['input_dict']
-                
-                self.set_input_data(chain_settings=chain_settings, chain_key=k)
-                
-                
-                
-                with open("log/output_input_dict.json", "w", encoding="utf-8") as f:
-                    json.dump(input_dict, f, indent=4, ensure_ascii=False)
-                with open("log/output_keep_input_output_data.json", "w", encoding="utf-8") as f:
-                    json.dump(self.keep_input_output_data, f, indent=4, ensure_ascii=False)
-                
 
                 # wrap_subjects, regen_chain, wrap_reports
                 func_input_variable = {'data': input_dict}
@@ -1021,16 +1240,17 @@ class LangChainModule():
                     func_input_variable['chain_ptr'] = chain_settings
                     
                 result = globals()[func_name](**func_input_variable)
-                for ok in output_dict.keys():
+                for ok in output_dict['properties'].keys():
                     assert ok in result.keys(), f'output_dict.keys() and result.keys() are not matched, they must be same. in run_func_chain(). output_dict.keys(): {output_dict.keys()} != {result.keys()}'
+                
+                
                 
                 chain_settings[k]['output_dict'] = result
                 parsed_result[k] = result
                 
-                
                 # check if keep_input_output_data is in the setting and the result
                 self.update_data(chain_settings=chain_settings, chain_key=k, output_result=result, input_dict=input_dict)
-
+                
                 # Not Used Yet
                 ## CallBack
                 callback_flag = chain_settings[k]['callback']
@@ -1133,10 +1353,9 @@ class LangChainModule():
             error_message = traceback.format_exc()
             write_log(message=f'{e}, \ntraceback: {error_message}, in run_chain_tree\nparsed_result: {parsed_result}')
         
-        self.clear_data()
         return parsed_result
     
-    def unify_metadata(self, response):
+    def unify_and_sum_metadata(self, response):
         if self.config.company == 'openai':
             pass
         elif self.config.company == 'google':
@@ -1149,9 +1368,11 @@ class LangChainModule():
             response.response_metadata = {'token_usage': {'prompt_tokens': prompt_tokens, 
                                                           'completion_tokens': completion_tokens}
                                           }
-            
+
         self.total_tokens['prompt_tokens'] += response.response_metadata['token_usage']['prompt_tokens']
         self.total_tokens['completion_tokens'] += response.response_metadata['token_usage']['completion_tokens']
+        
+                
         print('[TOKEN] total_tokens:', self.total_tokens)
         return response
     
@@ -1161,31 +1382,7 @@ def load_prompt_settings():
     # print(chains)
     return chains
 
-    
-def _demo_chains():
-    config = GPTConfig(character_id="default", stream=False, tokenizer=None, 
-                 keep_dialog=None, model='gpt-4o-mini', temperature=0.8, max_tokens_output=None, 
-                 max_tokens_context=30000, api_key_path='./settings/config.json')
-    lc_module = LangChainModule(config)
-    
-    
-    chain_settings = load_prompt_settings()
-    reunion = chain_settings['process']['parallel_test']
-    
-    
-    thread = threading.Thread(target=lc_module.run_chain_tree, args=(chain_settings, reunion, {'question': '안녕하세요'}, None))
-    # lc_module.run_chain_tree(chain_settings, reunion, prev_output={'question': '안녕하세요'})
-
-    # 스레드 시작
-    thread.start()
-    # 스레드가 종료될 때까지 대기
-    thread.join()
-    
 # test
 if __name__ == "__main__":
-    # _demo_history()
-    # _demo_parallel()
-    # _demo_parallel2()
     
-    
-    _demo_chains()
+    pass

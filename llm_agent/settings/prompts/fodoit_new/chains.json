@@ -1,0 +1,65 @@
+{
+    "process": {
+        "fodoit": {
+            "report": {
+                "include_images": null
+            }
+        },
+        "fodoit_stream": {
+            "stream_report": null
+        }
+    },
+    "report": {
+        "return_func_name": "report",
+        "type": "prompts",
+        "model": "gemini-2.5-flash-lite",
+        "instructions_data": ["normal/report_2/instructions.txt"],
+        "prompts_data": ["normal/report_2/prompts.txt"],
+        "input_dict": {"information": null},
+        "output_dict": {"request": "according to the request in information and fill results in detail as many as possible;"},
+        "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
+        "save_history": true,
+        "use_history": true,
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_stream": false,
+        "stream_type": "json",
+        "output_type": "json",
+        "output_parser_type": "pydantic",
+        "output": "all"
+    },
+    "stream_report": {
+        "return_func_name": "stream_report",
+        "type": "prompts",
+        "model": "gemini-2.5-flash-lite",
+        "instructions_data": ["normal/report_2/instructions.txt"],
+        "prompts_data": ["normal/report_2/prompts.txt"],
+        "input_dict": {"information": null},
+        "output_dict": {"request": "according to the request in information and fill results in detail as many as possible;"},
+        "config": {"configurable": {"user_id": "123", "conversation_id": "1"}},
+        "save_history": true,
+        "use_history": true,
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_stream": true,
+        "stream_emit_with_keys": true,
+        "stream_type": "str",
+        "output_type": "json",
+        "output_parser_type": "pydantic",
+        "output": "all"
+    },
+    "include_images": {
+        "return_func_name": "include_images",
+        "type": "function",
+        "func_name": "include_images",
+        "input_dict": {"request": null},
+        "output_dict": {"request": ""},
+        "callback": false,
+        "use_start_end_callback": false,
+        "start_end_suffix": "",
+        "output_type": "json",
+        "output": "all"
+    }
+}

@@ -1,0 +1,347 @@
+{
+    "agent_name": "운세 상담 챗봇",
+    "description": "운세 챗봇",
+    "variables": {
+        "conv_count": 0,
+        "current_node": "",
+        "next_node": "",
+        "val1": 0,
+        "val2": 0,
+        "val3": 0,
+        "val4": 0,
+        "val5": 0,
+        "val6": 0
+    },
+    "workflows": [
+        {
+            "workflow_id": "main_flow",
+            "name": "메인 흐름",
+            "description": "챗봇의 메인 흐름",
+            "start_node": ["saju_subject_generator"],
+            "nodes": {
+                "saju_subject_generator": {
+                    "node_id": "saju_subject_generator",
+                    "processing_type": "llm",
+                    "content": "잠시만 기다려주세요",
+                    "instructions": ["/saju_subject_generator"],
+                    "prompts": ["/saju_subject_generator", "\n소주제(sub_subjects) 개수는 2개로 고정\n", "{user_message}"],
+                    "input_variables": {
+                        "user_message": {"type": "string", "default_value": ""}
+                    },
+                    "output_variables": {
+                        "subject_list": {
+                            "type": "list",
+                            "description": "고객 맞춤형 유용한 정보를 전달하기 위한 주제와 소주제 목록; 중복되지 않게 다양한 주제로 만든다; 최대한 상세하게 정의",
+                            "items": {
+                                "type": "object",
+                                "description": "각 주제와 소주제",
+                                "properties": {
+                                    "subject": {
+                                        "type": "string",
+                                        "description": "주제에 대한 제목"
+                                    },
+                                    "sub_subjects": {
+                                        "type": "list",
+                                        "description": "주제에 대해 심화된 소주제",
+                                        "items": {
+                                            "type": "string",
+                                            "description": "주제에 대해 심화된 소주제; 중복되는 주제가 없도록 한다"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "output_filter": "all",
+                    "history": {
+                        "save": true,
+                        "use": true,
+                        "configurable": {
+                            "user_id": "tmp",
+                            "conversation_id": "tmp"
+                        }
+                    },
+                    "output_config": {
+                        "llm_to_server": {
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "str"
+                        },
+                        "server_to_client": {
+                            "use_return": true,
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "str"
+                        }
+                    },
+                    "next_node": {
+                        "parallel_interpretation": {"group": "group_0", "type": "node"}
+                    }
+                },
+                "parallel_interpretation": {
+                    "id": "parallel_interpretation",
+                    "processing_type": "llm",
+                    "content": "해석중",
+                    "instructions": ["/parallel_interpretation"],
+                    "prompts": ["/parallel_interpretation"],
+                    "input_variables": {
+                        "subject_list": {"type": "list", "default_value": []}
+                    },
+                    "output_variables": {
+                        "result": {
+                            "type": "list",
+                            "description": "고객 맞춤형 유용한 정보를 전달하기 위한 주제와 소주제 목록; 중복되지 않게 다양한 주제로 만든다; 최대한 상세하게 정의",
+                            "items": {
+                                "type": "object",
+                                "description": "각 주제와 소주제",
+                                "properties": {
+                                    "subject": {
+                                        "type": "object",
+                                        "description": "주제",
+                                        "properties": {
+                                            "title": {
+                                                "type": "string",
+                                                "description": "주제에 대한 제목"
+                                            },
+                                            "content": {
+                                                "type": "string",
+                                                "description": "주제에 대한 해석"
+                                            }
+                                        }
+                                    },
+                                    "sub_subjects": {
+                                        "type": "list",
+                                        "description": "주제에 대해 심화된 소주제",
+                                        "items": {
+                                            "type": "object",
+                                            "description": "소주제에 대한 제목",
+                                            "properties": {
+                                                "title": {
+                                                    "type": "string",
+                                                    "description": "소주제에 대한 제목"
+                                                },
+                                                "content": {
+                                                    "type": "string",
+                                                    "description": "소주제에 대한 해석"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "output_filter": "all",
+                    "branch": {
+                        "use_branch": true,
+                        "branch_rule": {
+                            "data_type": "list",
+                            "in_depth_path": ["subject_list"],
+                            "out_depth_path": ["result"],
+                            "in_out_set": [
+                                {
+                                    "type": "append",
+                                    "from": ["subject"],
+                                    "to": {
+                                        "base": ["items", "properties", "subject"],
+                                        "sub_path": [["description"], ["properties", "title", "description"]]
+                                    }
+                                },
+                                {
+                                    "type": "append",
+                                    "from": ["sub_subjects"],
+                                    "to": {
+                                        "base": ["items", "properties", "sub_subjects"],
+                                        "sub_path": [["description"]]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "history": {
+                        "save": true,
+                        "use": true,
+                        "configurable": {
+                            "user_id": "123",
+                            "conversation_id": "1"
+                        }
+                    },
+                    "output_config": {
+                        "llm_to_server": {
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "json"
+                        },
+                        "server_to_client": {
+                            "use_return": true,
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "json"
+                        }
+                    },
+                    "next_node": {
+                        "conv_count_increment": {"group": "group_0", "type": "node"}
+                    }
+                },
+                "conv_count_increment": {
+                    "node_id": "conv_count_increment",
+                    "processing_type": "function",
+                    "tool_name": "basic_operations",
+                    "content": "대화 횟수 증가",
+                    "operation": "expression",
+                    "expression": "$conv_count + 1",
+                    "target_variable": "conv_count",
+                    "input_variables": {
+                        "conv_count": {"type": "integer", "default_value": 0}
+                    },
+                    "output_variables": {
+                        "conv_count": {
+                            "type": "integer",
+                            "description": "증가된 대화 횟수"
+                        }
+                    },
+                    "output_filter": "all",
+                    "output_config": {
+                        "llm_to_server": {
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "json"
+                        },
+                        "server_to_client": {
+                            "use_return": true,
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "json"
+                        }
+                    },
+                    "next_node": {
+                        "validation": {"group": "group_0", "type": "node"}
+                    }
+                },
+                "validation": {
+                    "id": "validation",
+                    "processing_type": "function",
+                    "tool_name": "condition_evaluator",
+                    "content": "대화 횟수 검증",
+                    "input_variables": {
+                        "conv_count": {"type": "integer", "default_value": 0}
+                    },
+                    "output_variables": {
+                        "conv_count": {
+                            "type": "integer",
+                            "description": ""
+                        }
+                    },
+                    "output_filter": "all",
+                    "output_config": {
+                        "server_to_client": {
+                            "use_return": true,
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "json"
+                        }
+                    },
+                    "conditions": [
+                        {
+                            "condition": {
+                                "or": [
+                                    {
+                                        "conv_count": { "operator": ">", "operand": 5 }
+                                    }
+                                ]
+                            },
+                            "actions": [
+                                {
+                                    "type": "function",
+                                    "name": "print_log",
+                                    "params": {
+                                        "param1": {"variable": "conv_count"}
+                                    },
+                                    "output": {}
+                                }
+                            ]
+                        }
+                    ],
+                    "next_node": {
+                        "expression_math_example": {"group": "group_0", "type": "node"}
+                    }
+                },
+                "expression_math_example": {
+                    "node_id": "expression_math_example",
+                    "processing_type": "function",
+                    "tool_name": "basic_operations",
+                    "content": "단일 표현식 계산 예제",
+                    "operation": "expression",
+                    "expression": "($val1 + $val2) * 3 - 10 + pow($val3, 2) / 10",
+                    "target_variable": "expression_result",
+                    "input_variables": {
+                        "val1": {"type": "integer", "default_value": 10},
+                        "val2": {"type": "integer", "default_value": 20},
+                        "val3": {"type": "integer", "default_value": 5}
+                    },
+                    "output_variables": {
+                        "expression_result": {"type": "float", "description": "표현식 계산 결과"}
+                    },
+                    "output_filter": "all",
+                    "output_config": {
+                        "server_to_client": {
+                            "use_return": true,
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "json"
+                        }
+                    },
+                    "next_node": {}
+                },
+                "compound_with_expression_example": {
+                    "node_id": "compound_with_expression_example",
+                    "processing_type": "function",
+                    "tool_name": "basic_operations",
+                    "content": "복합 연산 내 표현식 계산 예제",
+                    "operation": "compound",
+                    "operations": [
+                        {
+                            "type": "expression",
+                            "target_variable": "first_result",
+                            "expression": "($val1 + $val2) * 3 - 10"
+                        },
+                        {
+                            "type": "expression",
+                            "target_variable": "second_result",
+                            "expression": "$first_result + sqrt($val3) * 5"
+                        },
+                        {
+                            "type": "max",
+                            "target_variable": "final_result",
+                            "operands": [
+                                {"variable": "first_result"},
+                                {"variable": "second_result"},
+                                100
+                            ]
+                        }
+                    ],
+                    "input_variables": {
+                        "val1": {"type": "integer", "default_value": 10},
+                        "val2": {"type": "integer", "default_value": 20},
+                        "val3": {"type": "integer", "default_value": 25}
+                    },
+                    "output_variables": {
+                        "first_result": {"type": "float", "description": "첫 번째 표현식 결과"},
+                        "second_result": {"type": "float", "description": "두 번째 표현식 결과"},
+                        "final_result": {"type": "float", "description": "최종 결과"}
+                    },
+                    "output_filter": "all",
+                    "output_config": {
+                        "server_to_client": {
+                            "use_return": true,
+                            "use_streaming": false,
+                            "streaming_type": "str",
+                            "output_type": "json"
+                        }
+                    },
+                    "next_node": {}
+                }
+            }
+        }
+    ]
+} 

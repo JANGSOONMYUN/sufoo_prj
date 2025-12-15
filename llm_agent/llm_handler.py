@@ -10,6 +10,7 @@ import threading
 import logging
 import logging.handlers
 from logging.handlers import RotatingFileHandler
+import sys
 
 # LLM
 import openai
@@ -17,8 +18,10 @@ from openai import OpenAI
 
 # modules
 from get_config import get_ip_port, get_num_clients
-from agent_gpt import LangChainModule
-from llm_config import GPTConfig
+from agent_llm_legacy import LangChainModuleLegacy
+from agent_llm import LangChainModule
+from agent_llm_stream import LangChainModuleStream
+from llm_config import LLMConfig
 from get_prompts import load_chain_setting, validate_chain_setting, set_parallel_chain_builder
 from get_prompts import subject_separator, update_prompts_in_chains, load_json_file, convert_str_list_to_json
 
@@ -84,8 +87,11 @@ class LLMHandler():
             # model='gpt-4o'
             company='openai'
         else:
-            model='gemini-1.5-flash'
+            model='gemini-2.5-flash'
             company='google'
+        print('=================')
+        print(f"model: {model}, company: {company}")
+        print('=================')
             
         '''
         '{
@@ -124,11 +130,11 @@ class LLMHandler():
             request[i]['representative_image_name'] = ''
 
         if self.gpt_config is None:
-            self.gpt_config = GPTConfig(character_id="default", stream=False, tokenizer=None, 
+            self.gpt_config = LLMConfig(character_id="default", stream=False, tokenizer=None, 
                     keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
                     max_tokens_context=30000, api_key_path='./settings/config.json')
         if self.lc_module is None:
-            self.lc_module = LangChainModule(self.gpt_config)
+            self.lc_module = LangChainModuleLegacy(self.gpt_config)
 
         target_process_name = 'sufoo'
         json_path='./settings/prompts/sufoo/chains.json'
@@ -155,13 +161,14 @@ class LLMHandler():
         print(llm_result)
         return llm_result
 
+
     def handle_fodoit(self, data):
         if False:
             model='gpt-4o-mini'
             # model='gpt-4o'
             company='openai'
         else:
-            model='gemini-1.5-flash'
+            model='gemini-2.5-flash'
             company='google'
             
         '''
@@ -201,54 +208,126 @@ class LLMHandler():
             request[i]['representative_image_name'] = ''
 
         if self.gpt_config is None:
-            self.gpt_config = GPTConfig(character_id="default", stream=False, tokenizer=None, 
+            self.gpt_config = LLMConfig(character_id="default", stream=False, tokenizer=None, 
                     keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
                     max_tokens_context=30000, api_key_path='./settings/config.json')
         if self.lc_module is None:
-            self.lc_module = LangChainModule(self.gpt_config)
+            self.lc_module = LangChainModuleStream(self.gpt_config)
 
-        target_process_name = 'fodoit'
-        json_path='./settings/prompts/sufoo/chains.json'
-        target_chain_for_parallel = 'parallel_report'
+        target_process_name = 'fodoit_stream'
+        json_path='./settings/prompts/fodoit_new/chains.json'
         chains = load_json_file(json_path)
-
         chains = update_prompts_in_chains(json_path=json_path, chains=chains)
         
-        chain_info = {
-            'target_proc': target_process_name,
-            'target_chain': target_chain_for_parallel,
-            'json_path': json_path
-        }
-        
         # input value must be string
-        input_val_dict = {
-            'information': json.dumps(information, ensure_ascii=False),
-            'question':question,
-            'additional_info_for_question':additional_info_for_question,
-            'client_info':client_info,
-            'request':request,
-            'chain_info': chain_info,
-        }
+        input_val_dict = {'information': json.dumps(information, ensure_ascii=False)}
         # with open('tmp_information.json', 'w') as json_file:
         #     json.dump(input_val_dict, json_file, indent=4, ensure_ascii=False)
 
-        with open('log/tmp_chains.json', 'w') as json_file:
-            json.dump(chains, json_file, indent=4, ensure_ascii=False)
+        # with open('tmp_chains.json', 'w') as json_file:
+        #     json.dump(chains, json_file, indent=4, ensure_ascii=False)
         
         prepared_chain = chains['process'][target_process_name]
         
     
         llm_result = self.lc_module.run_chain_tree(chain_settings=chains, 
-                                                process=prepared_chain, 
-                                                prev_output=input_val_dict,
-                                                callback=None,
-                                                max_extra_tries=1
+                                            process=prepared_chain, 
+                                            prev_output=input_val_dict,
+                                            callback=None,
+                                            max_extra_tries=1
                                             )
         print(llm_result)
         return llm_result
+
+    def handle_fodoit_stream(self, data, callback=None):
+        """
+        fodoit 스트리밍 처리 함수
+        callback을 통해 스트리밍된 내용을 실시간으로 전달할 수 있습니다.
+        
+        Args:
+            data: 요청 데이터 (question, additional_info_for_question, client_info, request 포함)
+            callback: 스트리밍 콜백 딕셔너리 (optional)
+                - func: 스트리밍 콘텐츠를 받는 함수 (content, instance, func_name, code=None)
+                - func_start_end: 시작/종료를 알리는 함수 (is_start, instance, suffix, func_name)
+                - instance: 콜백 함수에 전달할 인스턴스
+                - func_name: 함수 이름
+        
+        Returns:
+            llm_result: LLM 처리 결과
+        """
+        if False:
+            model='gpt-4o-mini'
+            # model='gpt-4o'
+            company='openai'
+        else:
+            model='gemini-2.5-flash'
+            company='google'
+            
+        print('=================')
+        print(f"model: {model}, company: {company}")
+        print('=================')
+
+        question = data.get('question')
+        additional_info_for_question = data.get('additional_info_for_question')
+        client_info = data.get('client_info')
+        request = data.get('request')
+
+        information = {
+            'question':question,
+            'additional_info_for_question':additional_info_for_question,
+            'client_info':client_info,
+            'request':request,
+        }
+
+        print('=================')
+        print('information')
+        print(information)
+        print('request')
+        print(request)
+        print('=================')
+
+        for i, r in enumerate(request):
+            request[i]['representative_image_name'] = ''
+
+        # 스트리밍을 위해 별도의 config와 module 인스턴스 생성
+        # handle_fodoit와 독립적으로 동작하도록 함
+        stream_config = LLMConfig(character_id="default", stream=True, tokenizer=None, 
+                keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
+                max_tokens_context=30000, api_key_path='./settings/config.json')
+        stream_module = LangChainModuleStream(stream_config)
+
+        target_process_name = 'fodoit_stream'
+        json_path='./settings/prompts/fodoit_new/chains.json'
+        chains = load_json_file(json_path)
+        chains = update_prompts_in_chains(json_path=json_path, chains=chains)
+        
+        # input value must be string
+        input_val_dict = {'information': json.dumps(information, ensure_ascii=False)}
+        
+        prepared_chain = chains['process'][target_process_name]
+        
+        llm_result = stream_module.run_chain_tree(chain_settings=chains, 
+                                            process=prepared_chain, 
+                                            prev_output=input_val_dict,
+                                            callback=callback,
+                                            max_extra_tries=1
+                                            )
+        print(llm_result)
+        return llm_result
+
 if __name__ == "__main__":
     llm = LLMHandler()
 
+    # 도움말: LLM 실행 없이 사용법만 출력하고 종료
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(
+            "사용법:\n"
+            "  - 기본 실행(기존): python3 llm_handler.py\n"
+            "  - 스트리밍 예제:    python3 llm_handler.py --stream\n"
+        )
+        raise SystemExit(0)
+
+    # 공통 테스트 데이터
     data = {
         "question": "당뇨가 있는데 음식과 슈퍼푸드 그리고 영양제 추천해줘",
         "additional_info_for_question": "",
@@ -268,16 +347,8 @@ if __name__ == "__main__":
                 "description": "",
                 "result": "",
                 "subject": [
-                    {
-                        "sub_title": "",
-                        "sub_description": "",
-                        "sub_result": ""
-                    },
-                    {
-                        "sub_title": "",
-                        "sub_description": "",
-                        "sub_result": ""
-                    }
+                    {"sub_title": "", "sub_description": "", "sub_result": ""},
+                    {"sub_title": "", "sub_description": "", "sub_result": ""}
                 ]
             },
             {
@@ -285,19 +356,42 @@ if __name__ == "__main__":
                 "description": "",
                 "result": "",
                 "subject": [
-                    {
-                        "sub_title": "",
-                        "sub_description": "",
-                        "sub_result": ""
-                    },
-                    {
-                        "sub_title": "",
-                        "sub_description": "",
-                        "sub_result": ""
-                    }
+                    {"sub_title": "", "sub_description": "", "sub_result": ""},
+                    {"sub_title": "", "sub_description": "", "sub_result": ""}
                 ]
             }
         ]
     }
 
-    llm.handle_sufoo(data)
+    # 예) 스트리밍 실행:
+    #   python3 llm_handler.py --stream
+    if "--stream" in sys.argv:
+        print("=== handle_fodoit_stream 스트리밍 예제 시작 ===")
+
+        def on_stream_chunk(content, instance, func_name, code=None):
+            # agent_llm_stream.py는 기본적으로 (chunk.content: str)을 넘깁니다.
+            # 에러 케이스는 dict로 넘어올 수 있습니다.
+            if isinstance(content, dict) and "error_msg" in content:
+                print(f"\n[ERROR:{func_name}] {content.get('error_msg')}\n", flush=True)
+                return
+            print(str(content), end="", flush=True)
+
+        def on_stream_start_end(is_start, instance, suffix, func_name):
+            if is_start:
+                print(f"\n[START] {func_name}\n", flush=True)
+            else:
+                print(f"\n\n[END] {func_name}\n", flush=True)
+
+        callback = {
+            "func": on_stream_chunk,
+            "func_start_end": on_stream_start_end,
+            "instance": None,
+            "func_name": "stream_report",
+        }
+
+        result = llm.handle_fodoit_stream(data, callback=callback)
+        print("\n=== 최종 결과(JSON) ===")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        # 기본 동작(기존 유지)
+        llm.handle_sufoo(data)

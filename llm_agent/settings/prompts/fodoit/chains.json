@@ -1,21 +1,5 @@
 {
     "process": {
-        "sufoo": {
-            "report_2": {
-                "include_images": null
-            }
-        },
-        "fodoit_orig": {
-            "create_subjects": {
-                "regen_chain": {
-                    "parallel_report": {
-                        "wrap_reports": {
-                            "include_images": null
-                        }
-                    }
-                }
-            }
-        },
         "fodoit": {
             "create_subjects_json": {
                 "regen_chain_json": {
@@ -31,7 +15,7 @@
     "report_2": {
         "return_func_name": "report",
         "type": "prompts",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash-lite",
         "instructions_data": ["normal/report_2/instructions.txt"],
         "prompts_data": ["normal/report_2/prompts.txt"],
         "input_dict": {"information": null},
@@ -51,7 +35,7 @@
     "create_subjects": {
         "return_func_name": "create_subjects",
         "type": "prompts",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash-lite",
         "instructions_data": ["normal/create_subjects/instructions.txt"],
         "prompts_data": ["normal/create_subjects/prompts.txt"],
         "input_dict": {"question": null, "client_info": null, "information": null},
@@ -71,7 +55,7 @@
     "create_subjects_json": {
         "return_func_name": "create_subjects",
         "type": "prompts",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash-lite",
         "instructions_data": ["normal/create_subjects_json/instructions.txt"],
         "prompts_data": ["normal/create_subjects_json/prompts.txt"],
         "input_dict": {"question": null, "client_info": null, "information": null},
@@ -158,7 +142,7 @@
     "report": {
         "return_func_name": "report",
         "type": "prompts",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash-lite",
         "instructions_data": ["normal/report/instructions.txt"],
         "prompts_data": ["normal/report/prompts.txt"],
         "input_dict": {"request_template": null, "question": null, "client_info": null},
@@ -177,7 +161,7 @@
     "parallel_report_": {
         "return_func_name": "report",
         "type": "prompts",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash-lite",
         "instructions_data": ["normal/report_parallel/instructions.txt"],
         "prompts_data": ["normal/report_parallel/prompts.txt"],
         "input_dict": {"client_info": null},
@@ -196,7 +180,7 @@
     "parallel_report": {
         "return_func_name": "report",
         "type": "prompts",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash-lite",
         "instructions_data": ["normal/report_parallel/instructions.txt"],
         "prompts_data": ["normal/report_parallel/prompts.txt"],
         "input_dict": {"client_info": null},
@@ -260,7 +244,7 @@
     "_sample_with_all_options": {
         "return_func_name": "sample_function_name",
         "type": "prompts",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash-lite",
         "instructions_data": ["sample/instructions.txt"],
         "prompts_data": ["sample/prompts.txt"],
         "input_dict": {"message": null},

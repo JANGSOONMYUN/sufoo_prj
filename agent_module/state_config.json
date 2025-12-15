@@ -1,0 +1,31 @@
+{
+    "state_fields": {
+        "user_message": {
+            "type": "str"
+        },
+        "bot_response": {
+            "type": "str",
+            "optional": true
+        },
+        "conversation_history": {
+            "type": "List[Dict]"
+        },
+        "subject_list": {
+            "type": "List[Dict]",
+            "optional": true
+        },
+        "current_node": {
+            "type": "str"
+        }
+    },
+    "output_model": {
+        "fields": {
+            "summary": {
+                "type": "str"
+            },
+            "keywords": {
+                "type": "List[str]"
+            }
+        }
+    }
+}
