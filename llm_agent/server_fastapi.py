@@ -106,16 +106,7 @@ def run_sync_func():
 
 def run_llm(data, selection='ver1'):
     llm = LLMHandler()
-    if selection == 'ver1':
-        llm_result = llm.handle_sufoo(data)
-    elif selection == 'ver2':
-        llm_result = llm.handle_fodoit(data)
-    
-    return llm_result
-
-def run_llm_ver2(data):
-    llm = LLMHandler()
-    llm_result = llm.handle_fodoit(data)
+    llm_result = llm.handle_sufoo(data)
     
     return llm_result
 
@@ -129,23 +120,6 @@ async def process_sync_llm(data: DataModel):
     json_data = json.loads(data.content)
     # run_llm 함수를 partial을 사용하여 data와 함께 호출
     run_llm_partial = functools.partial(run_llm, json.loads(data.content))
-    # ThreadPoolExecutor를 사용하여 동기 메서드 실행
-    with ThreadPoolExecutor() as pool:
-        result = await loop.run_in_executor(pool, run_llm_partial)
-        # print(result)
-    return result
-
-
-@app.post("/llm_ver2")
-async def process_sync_llm_ver2(data: DataModel):
-    loop = asyncio.get_running_loop()
-    print('--llm_ver2llm_ver2llm_ver2llm_ver2---')
-    print(type(data))
-    print(type(data.content))
-    print(data)
-    json_data = json.loads(data.content)
-    # run_llm 함수를 partial을 사용하여 data와 함께 호출
-    run_llm_partial = functools.partial(run_llm_ver2, json.loads(data.content))
     # ThreadPoolExecutor를 사용하여 동기 메서드 실행
     with ThreadPoolExecutor() as pool:
         result = await loop.run_in_executor(pool, run_llm_partial)

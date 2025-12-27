@@ -35,9 +35,6 @@ class SubResult(PydanticBaseModel):
     sub_title: str = Field(default="", description="주제의 작은 제목입니다.")
     sub_description: str = Field(default="", description="각 주제의 내용을 설명하는 서론. 서론을 1~2줄로 간략히 작성")
     sub_result: str = Field(default="", description="이 작은 주제에 대한 결과입니다. 마크다운 형식 사용")
-    # 기존 파이프라인(이미지 매칭)을 고려해 유지(없어도 동작해야 하므로 optional 성격으로 default 빈 문자열)
-    # representative_image_name: str = Field(default="", description="(선택) 이 sub 주제를 대표하는 이미지 이름 1개")
-
 
 class RequestItem(PydanticBaseModel):
     title: str = Field(default="", description="전체 요청의 제목입니다.")

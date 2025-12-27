@@ -19,7 +19,6 @@ from openai import OpenAI
 # modules
 from get_config import get_ip_port, get_num_clients
 from agent_llm_legacy import LangChainModuleLegacy
-from agent_llm import LangChainModule
 from agent_llm_stream import LangChainModuleStream
 from llm_config import LLMConfig
 from get_prompts import load_chain_setting, validate_chain_setting, set_parallel_chain_builder
@@ -161,84 +160,6 @@ class LLMHandler():
         print(llm_result)
         return llm_result
 
-
-    def handle_fodoit(self, data):
-        if False:
-            model='gpt-4o-mini'
-            # model='gpt-4o'
-            company='openai'
-        else:
-            model='gemini-2.5-flash'
-            company='google'
-            
-        '''
-        '{
-        "question":"고혈압",
-        "additional_info_for_question":"",
-        "client_info":
-            {"gender":"여","weight":"0","height":"0","bmi":"NaN","health_conditions":[],"medications_being_taken":[],"supplements_being_taken":[],"special_conditions":[]},
-        "request":[
-            {"title":"","description":"","result":"",
-            "subject":[
-                {"sub_title":"","sub_description":"","sub_result":""},
-                {"sub_title":"","sub_description":"","sub_result":""}]},
-            {"title":"","description":"","result":"",
-            "subject":[
-                {"sub_title":"","sub_description":"","sub_result":""},
-                {"sub_title":"","sub_description":"","sub_result":""}
-                ]
-        }]}'
-        '''
-
-        question = data.get('question')
-        additional_info_for_question = data.get('additional_info_for_question')
-        client_info = data.get('client_info')
-        request = data.get('request')
-
-        # request = convert_str_list_to_json(request)
-
-        information = {
-            'question':question,
-            'additional_info_for_question':additional_info_for_question,
-            'client_info':client_info,
-            'request':request,
-        }
-
-        for i, r in enumerate(request):
-            request[i]['representative_image_name'] = ''
-
-        if self.gpt_config is None:
-            self.gpt_config = LLMConfig(character_id="default", stream=False, tokenizer=None, 
-                    keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
-                    max_tokens_context=30000, api_key_path='./settings/config.json')
-        if self.lc_module is None:
-            self.lc_module = LangChainModuleStream(self.gpt_config)
-
-        target_process_name = 'fodoit_stream'
-        json_path='./settings/prompts/fodoit_new/chains.json'
-        chains = load_json_file(json_path)
-        chains = update_prompts_in_chains(json_path=json_path, chains=chains)
-        
-        # input value must be string
-        input_val_dict = {'information': json.dumps(information, ensure_ascii=False)}
-        # with open('tmp_information.json', 'w') as json_file:
-        #     json.dump(input_val_dict, json_file, indent=4, ensure_ascii=False)
-
-        # with open('tmp_chains.json', 'w') as json_file:
-        #     json.dump(chains, json_file, indent=4, ensure_ascii=False)
-        
-        prepared_chain = chains['process'][target_process_name]
-        
-    
-        llm_result = self.lc_module.run_chain_tree(chain_settings=chains, 
-                                            process=prepared_chain, 
-                                            prev_output=input_val_dict,
-                                            callback=None,
-                                            max_extra_tries=1
-                                            )
-        print(llm_result)
-        return llm_result
-
     def handle_fodoit_stream(self, data, callback=None):
         """
         fodoit 스트리밍 처리 함수
@@ -294,7 +215,7 @@ class LLMHandler():
         # handle_fodoit와 독립적으로 동작하도록 함
         stream_config = LLMConfig(character_id="default", stream=True, tokenizer=None, 
                 keep_dialog=None, company=company, model=model, temperature=0.8, max_tokens_output=None, 
-                max_tokens_context=30000, api_key_path='./settings/config.json')
+                max_tokens_context=300000, api_key_path='./settings/config.json')
         stream_module = LangChainModuleStream(stream_config)
 
         target_process_name = 'fodoit_stream'
