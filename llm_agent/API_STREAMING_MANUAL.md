@@ -86,13 +86,14 @@ uvicorn server_fastapi:app --host 0.0.0.0 --port 20000
 
 - **`event: start`**: 스트림 시작
 - **`event: chunk`**: 스트리밍 데이터(실시간)
+- **`event: image`**: 이미지 처리 이벤트(LLM 스트림과 분리)
 - **`event: end`**: 최종 결과(JSON)
 - **`event: error`**: 오류
 - **`event: finish`**: 내부 처리 종료(옵션)
 
 ### chunk 데이터 포맷(중요)
 
-현재 설정(`settings/prompts/fodoit_new/chains.json`)에서 `stream_emit_with_keys=true`이므로,
+현재 설정(`settings/prompts/fodoit_stream/chains.json`)에서 `stream_emit_with_keys=true`이므로,
 `event: chunk`의 `data`는 보통 아래처럼 **JSON 문자열(1개 객체)** 입니다.
 
 예:
@@ -107,6 +108,38 @@ uvicorn server_fastapi:app --host 0.0.0.0 --port 20000
 
 즉, 클라이언트는 `chunk` 이벤트마다 `JSON.parse(data)`를 수행해,
 어떤 필드가 업데이트되는지 **key 포함**으로 실시간 반영할 수 있습니다.
+
+---
+
+## image 이벤트(대표 이미지 비동기 처리)
+
+LLM이 `request[i].representative_image_name` 값을 “완성”하는 순간, 서버는 별도의 비동기 작업으로 이미지를 검색/다운로드하고,
+그 진행 상황을 **`event: image`**로 푸시합니다.  
+이 이벤트는 **LLM의 `chunk` 스트림(JSON 패치)과 분리**되어 있으므로, LLM 파싱/렌더링을 방해하지 않습니다.
+
+### image 데이터 포맷
+
+`image`의 `data` 역시 patch 형태(JSON 문자열)이며, 예시는 아래와 같습니다.
+
+예약(즉시):
+
+```json
+{"request_0":{"image_url":"https://fodoit.com:20000/images/비타민D_173...jpg?v=0","image_status":"scheduled"}}
+```
+
+다운로드 완료(나중):
+
+```json
+{"request_0":{"image_url":"https://fodoit.com:20000/images/비타민D_173...jpg?v=173...","image_status":"ready"}}
+```
+
+실패:
+
+```json
+{"request_0":{"image_status":"error","image_error":"검색 결과가 없습니다."}}
+```
+
+클라이언트는 `image_status === "ready"`를 받는 시점에 이미지 표시/갱신을 확정하면 가장 안정적입니다.
 
 ---
 

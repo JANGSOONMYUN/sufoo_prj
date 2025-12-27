@@ -33,16 +33,16 @@ except Exception:
 
 class SubResult(PydanticBaseModel):
     sub_title: str = Field(default="", description="주제의 작은 제목입니다.")
-    sub_description: str = Field(default="", description="주제의 작은 설명입니다.")
-    sub_result: str = Field(default="", description="이 작은 주제에 대한 결과 요약입니다.")
+    sub_description: str = Field(default="", description="각 주제의 내용을 설명하는 서론. 서론을 1~2줄로 간략히 작성")
+    sub_result: str = Field(default="", description="이 작은 주제에 대한 결과입니다. 마크다운 형식 사용")
     # 기존 파이프라인(이미지 매칭)을 고려해 유지(없어도 동작해야 하므로 optional 성격으로 default 빈 문자열)
-    representative_image_name: str = Field(default="", description="(선택) 이 sub 주제를 대표하는 이미지 이름 1개")
+    # representative_image_name: str = Field(default="", description="(선택) 이 sub 주제를 대표하는 이미지 이름 1개")
 
 
 class RequestItem(PydanticBaseModel):
     title: str = Field(default="", description="전체 요청의 제목입니다.")
-    description: str = Field(default="", description="전체 요청에 대한 상세 설명입니다.")
-    result: str = Field(default="", description="이 요청 항목에 대한 최종 요약 결과입니다.")
+    description: str = Field(default="", description="전체 요청에 대한 답변 서론 요약. 서론을 1~2줄로 간략히 작성")
+    result: str = Field(default="", description="이 요청 항목에 대한 최종 결과입니다.")
     subject: List[SubResult] = Field(default_factory=list, description="이 요청 항목을 구성하는 세부 주제들의 목록입니다.")
     representative_image_name: str = Field(default="", description="(선택) 이 요청 항목을 대표하는 이미지 이름 1개")
 
@@ -105,6 +105,33 @@ class _KeyedJSONStreamPostProcessor:
         if len(p) == 5 and p[0] == "request" and p[2] == "subject":
             _, req_i, _, subj_i, key = p
             return {f"request_{req_i}": {f"subject_{subj_i}": {key: ch}}}
+
+        return None
+
+    def _build_value_end_meta(self, full_value: str) -> Optional[Dict[str, Any]]:
+        """
+        특정 값 문자열이 '완성'되었을 때(닫는 따옴표를 만났을 때) 한 번만 내보내는 메타 이벤트.
+
+        - LLM chunk(JSON keyed stream) 자체는 그대로 유지하고,
+          서버가 이 메타 이벤트를 가로채서 별도 비동기 작업(예: 이미지 다운로드)을 트리거하기 위한 용도.
+        - 현재는 request[*].representative_image_name 에 대해서만 발생시킵니다.
+        """
+        p = self._active_value_path
+        if not p:
+            return None
+
+        # ("request", req_i, key)
+        if len(p) == 3 and p[0] == "request":
+            _, req_i, key = p
+            if key != "representative_image_name":
+                return None
+            return {
+                "_stream_meta": {
+                    "type": "value_end",
+                    "path": {"request_i": int(req_i), "key": str(key)},
+                    "value": str(full_value),
+                }
+            }
 
         return None
 
@@ -217,6 +244,9 @@ class _KeyedJSONStreamPostProcessor:
                                 break
                     else:
                         # value 종료
+                        meta_evt = self._build_value_end_meta(self._string_buf)
+                        if meta_evt:
+                            events.append(meta_evt)
                         self._active_value_path = None
                         for ctx in reversed(self._stack):
                             if ctx.get("type") == "object":
@@ -515,12 +545,12 @@ class LangChainModuleStream():
             
             # instructions_data가 있으면 파일에서 로드
             if 'instructions_data' in chain_config:
-                instructions_path = os.path.join('./settings/prompts/fodoit_new', chain_config['instructions_data'][0])
+                instructions_path = os.path.join('./settings/prompts/fodoit_stream', chain_config['instructions_data'][0])
                 instructions = load_prompt_file(instructions_path)
             
             # prompts_data가 있으면 파일에서 로드
             if 'prompts_data' in chain_config:
-                prompts_path = os.path.join('./settings/prompts/fodoit_new', chain_config['prompts_data'][0])
+                prompts_path = os.path.join('./settings/prompts/fodoit_stream', chain_config['prompts_data'][0])
                 prompts = load_prompt_file(prompts_path)
             
             # 체인 생성

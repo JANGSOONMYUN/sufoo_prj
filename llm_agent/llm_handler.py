@@ -279,15 +279,16 @@ class LLMHandler():
             'request':request,
         }
 
+
+        for i, r in enumerate(request):
+            request[i]['representative_image_name'] = ''
+
         print('=================')
         print('information')
         print(information)
         print('request')
         print(request)
         print('=================')
-
-        for i, r in enumerate(request):
-            request[i]['representative_image_name'] = ''
 
         # 스트리밍을 위해 별도의 config와 module 인스턴스 생성
         # handle_fodoit와 독립적으로 동작하도록 함
@@ -297,7 +298,7 @@ class LLMHandler():
         stream_module = LangChainModuleStream(stream_config)
 
         target_process_name = 'fodoit_stream'
-        json_path='./settings/prompts/fodoit_new/chains.json'
+        json_path='./settings/prompts/fodoit_stream/chains.json'
         chains = load_json_file(json_path)
         chains = update_prompts_in_chains(json_path=json_path, chains=chains)
         

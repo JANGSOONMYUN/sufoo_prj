@@ -10,7 +10,7 @@ from llm_handler import LLMHandler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, Set
 
 
 app = FastAPI()
@@ -169,6 +169,24 @@ async def process_sync_llm_ver3(data: DataModel):
     async def event_generator() -> AsyncGenerator[str, None]:
         queue: asyncio.Queue = asyncio.Queue()
         done_sentinel = object()
+        scheduled_image_req_idxs: Set[int] = set()
+        active_image_req_idxs: Set[int] = set()
+        llm_done: bool = False
+        image_debug: bool = os.environ.get("IMAGE_DEBUG", "0") in ("1", "true", "True", "yes", "YES")
+
+        def _img_print(msg: str) -> None:
+            if image_debug:
+                print(f"[IMAGE][SSE] {msg}", flush=True)
+
+        # 이미지 URL 구성(필요 시 환경변수로 오버라이드)
+        # 예: https://fodoit.com:20000/images/
+        open_link_url = os.environ.get("IMAGE_OPEN_LINK_URL", "https://fodoit.com:20000/images/")
+        # 다운로드 디렉토리(StaticFiles("/images")와 같은 위치를 권장)
+        download_dir = os.environ.get(
+            "IMAGE_DOWNLOAD_DIR",
+            "/home/jsm/llm/sufoo_prj/llm_agent/images",
+        )
+        _img_print(f"config open_link_url='{open_link_url}' download_dir='{download_dir}'")
 
         def _sse(event: str, data_str: str) -> str:
             """
@@ -183,12 +201,86 @@ async def process_sync_llm_ver3(data: DataModel):
         def _put_nowait_threadsafe(item: Any) -> None:
             loop.call_soon_threadsafe(queue.put_nowait, item)
 
+        async def _handle_image_stream(req_i: int, rep_name: str) -> None:
+            """
+            LLM 스트리밍과 완전히 분리된 이미지 처리 파이프라인.
+            - include_images_stream가 (scheduled -> ready/error) 패치를 yield
+            - 이를 SSE event: image 로 클라이언트에 전송
+            """
+            try:
+                # lazy import: 서버 부팅 시 import 문제/오버헤드 방지
+                from modules.search_img.search import include_images_stream
+
+                _img_print(f"task start: request_i={int(req_i)} rep_name='{rep_name}'")
+                async for patch in include_images_stream(
+                    rep_name,
+                    req_i,
+                    download_dir=download_dir,
+                    open_link_url=open_link_url,
+                ):
+                    _img_print(f"emit event:image request_i={int(req_i)} patch={patch}")
+                    _put_nowait_threadsafe(("image", json.dumps(patch, ensure_ascii=False)))
+            except Exception as e:
+                _img_print(f"task error: request_i={int(req_i)} err='{e}'")
+                _put_nowait_threadsafe(
+                    (
+                        "image",
+                        json.dumps(
+                            {f"request_{int(req_i)}": {"image_status": "error", "image_error": str(e)}},
+                            ensure_ascii=False,
+                        ),
+                    )
+                )
+            finally:
+                # 이미지 작업이 모두 끝났고 LLM도 끝났으면 SSE 종료
+                active_image_req_idxs.discard(int(req_i))
+                _img_print(f"task done: request_i={int(req_i)} active={sorted(list(active_image_req_idxs))} llm_done={llm_done}")
+                if llm_done and not active_image_req_idxs:
+                    _put_nowait_threadsafe(done_sentinel)
+
+        def _start_image_task(req_i: int, rep_name: str) -> None:
+            """
+            이벤트 루프 스레드에서 실행되어야 하는 함수.
+            - active set 갱신
+            - 이미지 async task 시작
+            """
+            active_image_req_idxs.add(int(req_i))
+            _img_print(f"task scheduled: request_i={int(req_i)} rep_name='{rep_name}' active={sorted(list(active_image_req_idxs))}")
+            asyncio.create_task(_handle_image_stream(int(req_i), rep_name))
+
         # LangChainModuleStream.simple_stream_handler는 (content, instance, func_name)로 호출하지만
         # 예외 케이스에선 (dict, instance, func_name, code)로도 호출하므로 code까지 받도록 함
         def _cb_func(content, instance, func_name, code: Optional[int] = None):
             if isinstance(content, dict) and "error_msg" in content:
                 _put_nowait_threadsafe(("error", str(content.get("error_msg", ""))))
                 return
+
+            # (중요) agent_llm_stream.py가 대표 이미지명 완성 시점에 보내는 메타 이벤트를 가로채서
+            # LLM chunk 스트림을 건드리지 않고, 별도 이미지 스트림을 시작한다.
+            if isinstance(content, str):
+                raw = content.strip()
+                if raw.startswith("{") and '"_stream_meta"' in raw:
+                    try:
+                        meta_obj = json.loads(raw)
+                        meta = meta_obj.get("_stream_meta") if isinstance(meta_obj, dict) else None
+                        if isinstance(meta, dict) and meta.get("type") == "value_end":
+                            path = meta.get("path") if isinstance(meta.get("path"), dict) else {}
+                            if path.get("key") == "representative_image_name":
+                                req_i = int(path.get("request_i", -1))
+                                rep_name = str(meta.get("value", "")).strip()
+                                _img_print(f"meta value_end: request_i={req_i} key=representative_image_name value='{rep_name}'")
+                                if req_i >= 0 and rep_name and req_i not in scheduled_image_req_idxs:
+                                    scheduled_image_req_idxs.add(req_i)
+                                    _img_print(f"meta accepted -> start image task: request_i={req_i}")
+                                    loop.call_soon_threadsafe(
+                                        lambda: _start_image_task(req_i, rep_name)
+                                    )
+                                # 메타 이벤트는 chunk로 클라이언트에 보내지 않는다.
+                                return
+                    except Exception:
+                        # 메타 파싱 실패는 무시하고 일반 chunk로 흘린다.
+                        pass
+
             # content가 이미 JSON 문자열(키 포함 스트림)일 수 있으므로 그대로 전달
             if isinstance(content, (dict, list)):
                 _put_nowait_threadsafe(("chunk", json.dumps(content, ensure_ascii=False)))
@@ -217,7 +309,7 @@ async def process_sync_llm_ver3(data: DataModel):
             except Exception as e:
                 _put_nowait_threadsafe(("error", f"{e}"))
             finally:
-                _put_nowait_threadsafe(done_sentinel)
+                _put_nowait_threadsafe(("llm_done", "1"))
 
         # 백그라운드에서 LLM 실행 시작
         asyncio.create_task(_run_llm_in_thread())
@@ -229,6 +321,10 @@ async def process_sync_llm_ver3(data: DataModel):
             item = await queue.get()
             if item is done_sentinel:
                 break
+
+            # done_sentinel이 아닌 경우 tuple로 가정
+            if not isinstance(item, tuple) or len(item) != 2:
+                continue
 
             # item: ("chunk"|"end"|"error"|"start"|"finish", data)
             evt, evt_data = item
@@ -243,6 +339,14 @@ async def process_sync_llm_ver3(data: DataModel):
                 yield _sse("start", evt_data)
             elif evt == "finish":
                 yield _sse("finish", evt_data)
+            elif evt == "image":
+                yield _sse("image", evt_data)
+            elif evt == "llm_done":
+                llm_done = True
+                _img_print(f"llm_done received; active_images={sorted(list(active_image_req_idxs))}")
+                # 이미지 작업이 하나도 없으면 즉시 종료
+                if not active_image_req_idxs:
+                    break
 
     headers = {
         "Cache-Control": "no-cache",
