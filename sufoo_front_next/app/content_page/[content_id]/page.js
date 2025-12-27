@@ -38,6 +38,8 @@ export default function Page({ params }) {
   const streamDataRef = useRef(null);
   const rafScheduledRef = useRef(false);
   const hasInsertedRef = useRef(false);
+  const streamEndedRef = useRef(false);
+  const insertTimerRef = useRef(null);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -64,6 +66,11 @@ export default function Page({ params }) {
       if (isFetching.current) return; // 이미 fetch 중이면 실행하지 않음
       isFetching.current = true;
       hasInsertedRef.current = false;
+      streamEndedRef.current = false;
+      if (insertTimerRef.current) {
+        clearTimeout(insertTimerRef.current);
+        insertTimerRef.current = null;
+      }
 
       setLoading(true);
       try {
@@ -115,28 +122,138 @@ export default function Page({ params }) {
           setIsStreaming(true);
           setLoading(false); // 전체 로딩 화면 대신 "실시간" 렌더링 시작
 
-          const handleStreamEnd = async (finalDataStr) => {
-            const parsed = normalizeLlmResultForView(JSON.parse(finalDataStr));
-
-            streamDataRef.current = parsed;
-            setResponseData(deepClone(parsed));
-            setIsStreaming(false);
-
+          const insertFinalOnce = async (reason) => {
             if (hasInsertedRef.current) return;
             hasInsertedRef.current = true;
+            if (insertTimerRef.current) {
+              clearTimeout(insertTimerRef.current);
+              insertTimerRef.current = null;
+            }
 
-            // 최종 결과만 DB에 저장
-            await fetch('/api/insert_contents', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: String(userId),
-                searchWords: llmJsonData.current.question,
-                advertiseInfo: "",
-                data: JSON.stringify(parsed),
-                url: String(relative_url),
-              }),
+            const payload = streamDataRef.current;
+            console.log('[DB INSERT] 저장 시작:', {
+              reason,
+              url: String(relative_url),
+              requestCount: payload?.include_images?.request?.length || 0,
             });
+
+          await fetch('/api/insert_contents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: String(userId),
+              searchWords: llmJsonData.current.question,
+                advertiseInfo: "",
+                data: JSON.stringify(payload),
+                url: String(relative_url),
+            }),
+          });
+
+            console.log('[DB INSERT] 저장 완료:', { reason, url: String(relative_url) });
+          };
+
+          const maybeInsertFinal = async (reason) => {
+            if (!streamEndedRef.current) return;
+            if (hasInsertedRef.current) return;
+            const reqArr = streamDataRef.current?.include_images?.request;
+            if (!Array.isArray(reqArr) || reqArr.length === 0) return;
+
+            const pending = reqArr.filter((r) => {
+              const name = (r?.representative_image_name ?? '').trim();
+              if (!name) return false;
+              const st = r?.image_status;
+              return st !== 'ready' && st !== 'error';
+            }).length;
+
+            console.log('[DB INSERT CHECK]', { reason, total: reqArr.length, pending });
+            if (pending === 0) {
+              await insertFinalOnce('all_images_done');
+            }
+          };
+
+          const summarizeImageStates = (dataObj) => {
+            const reqArr = dataObj?.include_images?.request;
+            if (!Array.isArray(reqArr)) return [];
+            return reqArr.map((r, idx) => ({
+              requestIdx: idx,
+              image_status: r?.image_status || '(없음)',
+              image_url: r?.image_url ? `${r.image_url.substring(0, 50)}...` : '(없음)',
+              representative_image_name: r?.representative_image_name || '(없음)',
+            }));
+          };
+
+          const handleStreamEnd = async (finalDataStr) => {
+            console.log('[END EVENT] end 이벤트 수신:', {
+              timestamp: new Date().toISOString(),
+              finalDataLength: finalDataStr?.length || 0,
+              beforeImageStates: summarizeImageStates(streamDataRef.current),
+            });
+
+            const parsed = normalizeLlmResultForView(JSON.parse(finalDataStr));
+
+            // end 이벤트의 최종 JSON에는 이미지 필드가 없을 수 있으므로,
+            // 기존 스트리밍 상태(이미지 이벤트로 채워진 값)를 보존하면서 최종 결과를 merge
+            const merged = (() => {
+              const finalNormalized = parsed;
+              const currentNormalized = normalizeLlmResultForView(streamDataRef.current);
+              if (!currentNormalized || typeof currentNormalized !== 'object') return finalNormalized;
+
+              const next = deepClone(finalNormalized);
+              if (!next.include_images || typeof next.include_images !== 'object') next.include_images = {};
+              if (!Array.isArray(next.include_images.request)) next.include_images.request = [];
+
+              const nextReq = next.include_images.request;
+              const curReq = currentNormalized?.include_images?.request;
+
+              if (Array.isArray(curReq)) {
+                for (let i = 0; i < curReq.length; i++) {
+                  const curItem = curReq[i];
+                  if (!curItem || typeof curItem !== 'object') continue;
+
+                  if (!nextReq[i] || typeof nextReq[i] !== 'object') {
+                    nextReq[i] = deepClone(curItem);
+                    continue;
+                  }
+
+                  const nextItem = nextReq[i];
+                  const keepIfMissing = (key) => {
+                    const curVal = curItem[key];
+                    const nextVal = nextItem[key];
+                    const curHas = typeof curVal === 'string' && curVal.trim() !== '';
+                    const nextHas = typeof nextVal === 'string' && nextVal.trim() !== '';
+                    if (curHas && !nextHas) nextItem[key] = curVal;
+                  };
+
+                  keepIfMissing('image_url');
+                  keepIfMissing('image_status');
+                  keepIfMissing('image_error');
+                  keepIfMissing('representative_image_name');
+                }
+              }
+
+              return next;
+            })();
+
+            console.log('[END EVENT] merge 완료:', {
+              afterImageStates: summarizeImageStates(merged),
+            });
+
+            streamDataRef.current = merged;
+            setResponseData(deepClone(merged));
+            setIsStreaming(false);
+
+            streamEndedRef.current = true;
+
+            // end 이후에도 image 이벤트가 뒤늦게 올 수 있으므로 잠시 대기 후 저장 (타임아웃)
+            if (insertTimerRef.current) clearTimeout(insertTimerRef.current);
+            insertTimerRef.current = setTimeout(() => {
+              insertFinalOnce('timeout_after_end').catch((e) => {
+                console.error('[DB INSERT] timeout 저장 실패:', e);
+              });
+            }, 20000);
+
+            // 지금 이미 이미지가 다 끝났으면 바로 저장
+            await maybeInsertFinal('end_event');
           };
 
           await postSSE(
@@ -152,6 +269,70 @@ export default function Page({ params }) {
                   scheduleUiUpdate();
                 } catch (e) {
                   console.warn('chunk JSON 파싱 실패:', e, data);
+                }
+              } else if (event === 'image') {
+                // image 이벤트: 대표 이미지 비동기 처리 (chunk와 분리)
+                try {
+                  const patch = JSON.parse(data);
+                  console.log('[IMAGE EVENT] 이미지 이벤트 수신:', {
+                    patch,
+                    rawData: data,
+                    timestamp: new Date().toISOString()
+                  });
+                  
+                  // patch 적용 전 현재 상태 확인
+                  const beforeState = deepClone(streamDataRef.current);
+                  console.log('[IMAGE EVENT] 패치 적용 전 상태:', {
+                    requestCount: beforeState?.include_images?.request?.length || 0,
+                    imageStates: beforeState?.include_images?.request?.map((req, idx) => ({
+                      requestIdx: idx,
+                      image_status: req.image_status || '(없음)',
+                      image_url: req.image_url ? `${req.image_url.substring(0, 50)}...` : '(없음)'
+                    })) || []
+                  });
+                  
+                  // patch에서 이미지 상태 정보 추출
+                  const requestKeys = Object.keys(patch);
+                  console.log(`[IMAGE EVENT] 패치에 포함된 request 개수: ${requestKeys.length}`);
+                  requestKeys.forEach(key => {
+                    const requestData = patch[key];
+                    const reqIdx = key.match(/\d+/)?.[0] || '?';
+                    console.log(`[IMAGE EVENT] request_${reqIdx} 이미지 패치 상세:`, {
+                      status: requestData.image_status || '(없음)',
+                      image_url: requestData.image_url ? `${requestData.image_url.substring(0, 50)}...` : '(없음)',
+                      image_error: requestData.image_error || '(없음)',
+                      representative_image_name: requestData.representative_image_name || '(없음)',
+                      allKeys: Object.keys(requestData)
+                    });
+                  });
+                  
+                  // image 이벤트임을 명시하여 이미지 필드 업데이트 허용
+                  applyLlmStreamPatch(streamDataRef.current, patch, true);
+                  
+                  // 패치 적용 후 상태 확인
+                  const afterState = streamDataRef.current;
+                  console.log('[IMAGE EVENT] 패치 적용 후 상태:', {
+                    requestCount: afterState?.include_images?.request?.length || 0,
+                    imageStates: afterState?.include_images?.request?.map((req, idx) => ({
+                      requestIdx: idx,
+                      image_status: req.image_status || '(없음)',
+                      image_url: req.image_url ? `${req.image_url.substring(0, 50)}...` : '(없음)'
+                    })) || []
+                  });
+                  
+                  scheduleUiUpdate();
+                  
+                  console.log('[IMAGE EVENT] 이미지 패치 적용 완료, UI 업데이트 예약됨');
+                  // end 이후에도 image 이벤트가 올 수 있으므로, 모든 이미지 완료 시점에 최종 저장
+                  maybeInsertFinal('image_event').catch((e) => {
+                    console.error('[DB INSERT] image_event 체크 실패:', e);
+                  });
+                } catch (e) {
+                  console.error('[IMAGE EVENT] image JSON 파싱 실패:', {
+                    error: e,
+                    data,
+                    message: e.message
+                  });
                 }
               } else if (event === 'end') {
                 // async 저장 로직은 별도 처리(미-await) + 에러는 내부에서 캐치
@@ -193,6 +374,10 @@ export default function Page({ params }) {
     return () => {
       window.removeEventListener('scroll',handleScroll);
       streamAbortRef.current?.abort();
+      if (insertTimerRef.current) {
+        clearTimeout(insertTimerRef.current);
+        insertTimerRef.current = null;
+      }
       const endTotal = performance.now();
       console.log(`Total effect duration: ${endTotal - startTotal}ms`);
     };
@@ -258,22 +443,98 @@ export default function Page({ params }) {
         </div>
 
         {/* 대표 이미지 */}
-        {item.image_url && (
-      <div style={{ overflow: 'hidden', width: '100%', height: 'auto', aspectRatio: '7 / 4' }}> {/* 이미지 컨테이너 */}
+        {item.image_status === 'scheduled' && (() => {
+          console.log(`[IMAGE RENDER] request_${index} 이미지 검색 예약됨 (scheduled):`, {
+            image_status: item.image_status,
+            representative_image_name: item.representative_image_name || '(없음)',
+            image_url: item.image_url || '(아직 없음)'
+          });
+          return (
+            <div style={{ 
+              overflow: 'hidden', 
+              width: '100%', 
+              height: 'auto', 
+              aspectRatio: '7 / 4',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#f3f4f6',
+              borderRadius: '8px',
+              marginTop: '10px'
+            }}>
+              <div style={{ textAlign: 'center', color: '#6b7280' }}>
+                <div style={{ marginBottom: '8px' }}>🖼️</div>
+                <div style={{ fontSize: '14px' }}>이미지 검색 중...</div>
+              </div>
+            </div>
+          );
+        })()}
+        {item.image_status === 'ready' && item.image_url && (() => {
+          console.log(`[IMAGE RENDER] request_${index} 이미지 렌더링 시작:`, {
+            image_url: item.image_url,
+            representative_image_name: item.representative_image_name,
+            status: item.image_status
+          });
+          return (
+            <div style={{ overflow: 'hidden', width: '100%', height: 'auto', aspectRatio: '7 / 4' }}>
         <img
           src={item.image_url}
           alt={item.representative_image_name || '이미지'}
           style={{
             width: '100%',
             height: '100%',
-            objectFit: 'cover',  // 이미지가 컨테이너에 꽉 차도록 조정
-            objectPosition: 'center center',  // 이미지를 가운데 기준으로 자르기
+                  objectFit: 'cover',
+                  objectPosition: 'center center',
             borderRadius: '8px',
             marginTop: '10px'
           }}
+                onLoad={() => {
+                  console.log(`[IMAGE RENDER] request_${index} 이미지 로드 성공:`, {
+                    image_url: item.image_url,
+                    representative_image_name: item.representative_image_name
+                  });
+                }}
+                onError={(e) => {
+                  console.error(`[IMAGE RENDER] request_${index} 이미지 로드 실패:`, {
+                    image_url: item.image_url,
+                    representative_image_name: item.representative_image_name,
+                    error: '이미지 로드 중 오류 발생'
+                  });
+                  e.target.style.display = 'none';
+                  e.target.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">이미지를 불러올 수 없습니다.</div>';
+                }}
         />
       </div>
-      )}
+          );
+        })()}
+        {!item.image_status && item.representative_image_name && (() => {
+          console.log(`[IMAGE RENDER] request_${index} 이미지 상태 없음 (representative_image_name만 존재):`, {
+            representative_image_name: item.representative_image_name,
+            image_url: item.image_url || '(없음)'
+          });
+          return null;
+        })()}
+        {item.image_status === 'error' && (() => {
+          console.error(`[IMAGE RENDER] request_${index} 이미지 에러 상태:`, {
+            image_status: item.image_status,
+            image_error: item.image_error,
+            image_url: item.image_url || '(없음)',
+            representative_image_name: item.representative_image_name || '(없음)'
+          });
+          return (
+            <div style={{ 
+              padding: '12px',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '8px',
+              marginTop: '10px',
+              color: '#991b1b',
+              fontSize: '14px'
+            }}>
+              ⚠️ 이미지 로드 실패: {item.image_error || '이미지를 불러올 수 없습니다.'}
+            </div>
+          );
+        })()}
 
         {/* 상세 항목 (subject) */}
         {item.subject?.map((subjectItem, subIndex) => (

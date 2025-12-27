@@ -111,6 +111,8 @@ export function buildInitialLlmViewData(template) {
         result: typeof reqItem?.result === "string" ? reqItem.result : "",
         // 이미지 키는 서버가 제공할 수도 있으므로 미리 두되, 없으면 빈 문자열 유지
         image_url: typeof reqItem?.image_url === "string" ? reqItem.image_url : "",
+        image_status: typeof reqItem?.image_status === "string" ? reqItem.image_status : "",
+        image_error: typeof reqItem?.image_error === "string" ? reqItem.image_error : "",
         representative_image_name:
           typeof reqItem?.representative_image_name === "string"
             ? reqItem.representative_image_name
@@ -163,14 +165,45 @@ function mergeText(prev, next) {
 
 function ensureRequestItem(requestArray, idx) {
   while (requestArray.length <= idx) {
-    requestArray.push({ title: "", description: "", result: "", subject: [] });
+    requestArray.push({ 
+      title: "", 
+      description: "", 
+      result: "", 
+      image_url: "",
+      image_status: "",
+      image_error: "",
+      representative_image_name: "",
+      subject: [] 
+    });
   }
   const item = requestArray[idx];
   if (!item || typeof item !== "object") {
-    requestArray[idx] = { title: "", description: "", result: "", subject: [] };
+    requestArray[idx] = { 
+      title: "", 
+      description: "", 
+      result: "", 
+      image_url: "",
+      image_status: "",
+      image_error: "",
+      representative_image_name: "",
+      subject: [] 
+    };
   }
   if (!Array.isArray(requestArray[idx].subject)) {
     requestArray[idx].subject = [];
+  }
+  // 이미지 필드가 없으면 초기화
+  if (typeof requestArray[idx].image_url === "undefined") {
+    requestArray[idx].image_url = "";
+  }
+  if (typeof requestArray[idx].image_status === "undefined") {
+    requestArray[idx].image_status = "";
+  }
+  if (typeof requestArray[idx].image_error === "undefined") {
+    requestArray[idx].image_error = "";
+  }
+  if (typeof requestArray[idx].representative_image_name === "undefined") {
+    requestArray[idx].representative_image_name = "";
   }
 }
 
@@ -195,8 +228,12 @@ function mergeSubjectPatch(targetSubjectItem, patchObj) {
   }
 }
 
-function mergeRequestPatch(targetRequestItem, patchObj) {
+function mergeRequestPatch(targetRequestItem, patchObj, isImageEvent = false) {
   if (!patchObj || typeof patchObj !== "object") return;
+
+  // 이미지 관련 필드는 누적이 아니라 교체해야 함
+  const imageFields = ['image_url', 'image_status', 'image_error', 'representative_image_name'];
+  const protectedImageFields = ['image_url', 'image_status', 'image_error']; // image 이벤트에서만 업데이트할 필드
 
   for (const [k, v] of Object.entries(patchObj)) {
     const subMatch = /^subject_(\d+)$/.exec(k);
@@ -208,6 +245,23 @@ function mergeRequestPatch(targetRequestItem, patchObj) {
       continue;
     }
 
+    // 이미지 관련 필드 처리
+    if (imageFields.includes(k)) {
+      // protectedImageFields는 image 이벤트에서만 업데이트 (chunk 이벤트에서는 건드리지 않음)
+      if (protectedImageFields.includes(k)) {
+        if (!isImageEvent) {
+          // chunk 이벤트에서는 이미지 필드를 건드리지 않음 (기존 값 유지)
+          continue;
+        }
+        // image 이벤트에서는 항상 업데이트
+        targetRequestItem[k] = v;
+        continue;
+      }
+      // representative_image_name은 chunk 이벤트에서도 업데이트 (스트리밍으로 계속 오는 값)
+      targetRequestItem[k] = v;
+      continue;
+    }
+
     if (typeof v === "string") {
       targetRequestItem[k] = mergeText(targetRequestItem[k], v);
     } else {
@@ -216,7 +270,7 @@ function mergeRequestPatch(targetRequestItem, patchObj) {
   }
 }
 
-function applyRequestKeyPatch(target, requestKey, requestPatchObj) {
+function applyRequestKeyPatch(target, requestKey, requestPatchObj, isImageEvent = false) {
   const match = /^request_(\d+)$/.exec(requestKey);
   if (!match) return false;
 
@@ -228,7 +282,7 @@ function applyRequestKeyPatch(target, requestKey, requestPatchObj) {
     target.include_images.request = [];
   }
   ensureRequestItem(target.include_images.request, reqIdx);
-  mergeRequestPatch(target.include_images.request[reqIdx], requestPatchObj);
+  mergeRequestPatch(target.include_images.request[reqIdx], requestPatchObj, isImageEvent);
   return true;
 }
 
@@ -236,19 +290,22 @@ function applyRequestKeyPatch(target, requestKey, requestPatchObj) {
  * chunk patch(JSON.parse(data))를 누적 데이터(target)에 반영합니다.
  * - 기본 반영 위치: target.include_images.request
  * - patch 키: request_0, request_1, ... / 내부: title/description/result, subject_0...
+ * @param {Object} target - 대상 데이터 객체
+ * @param {Object} patch - 적용할 패치 객체
+ * @param {boolean} isImageEvent - image 이벤트인지 여부 (기본값: false)
  */
-export function applyLlmStreamPatch(target, patch) {
+export function applyLlmStreamPatch(target, patch, isImageEvent = false) {
   if (!target || typeof target !== "object") return;
   if (!patch || typeof patch !== "object") return;
 
   for (const [k, v] of Object.entries(patch)) {
     // 가장 흔한 케이스: {"request_0": {...}}
-    if (applyRequestKeyPatch(target, k, v)) continue;
+    if (applyRequestKeyPatch(target, k, v, isImageEvent)) continue;
 
     // 혹시 include_images 하위로 들어오는 케이스 방어: {"include_images": {"request_0": {...}}}
     if (k === "include_images" && v && typeof v === "object") {
       for (const [ik, iv] of Object.entries(v)) {
-        applyRequestKeyPatch(target, ik, iv);
+        applyRequestKeyPatch(target, ik, iv, isImageEvent);
       }
       continue;
     }
