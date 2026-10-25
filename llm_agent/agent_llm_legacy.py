@@ -11,9 +11,6 @@ from datetime import datetime
 import pytz
 from typing import Dict, Any, Tuple, Type, List
 
-import openai
-from openai import OpenAI
-from transformers import GPT2Tokenizer
 from get_config import get_api_key
 from get_prompts import load_chain_setting
 from llm_config import LLMConfig
@@ -23,27 +20,26 @@ from modules.subject_module import wrap_subjects, regen_chain, wrap_reports
 # function for langchain
 from modules.search_img.search import include_images
 
-from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-# from langchain_google_genai import HarmBlockThreshold, HarmCategory
-from langchain_google_vertexai import ChatVertexAI, VertexAI
-# from langchain_google_vertexai import HarmBlockThreshold, HarmCategory
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
 from pydantic import BaseModel, create_model, Field, conint, confloat
-from langchain.output_parsers import PydanticOutputParser
-from langchain.output_parsers import StructuredOutputParser, ResponseSchema
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
+try:
+    # langchain 1.x: 레거시 파서는 langchain-classic으로 이동
+    from langchain_classic.output_parsers import StructuredOutputParser, ResponseSchema
+except ImportError:
+    from langchain.output_parsers import StructuredOutputParser, ResponseSchema
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
+from agent_llm_stream import chunk_text
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.prompts import MessagesPlaceholder
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
-from langchain import hub
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableWithMessageHistory, ConfigurableFieldSpec
 from langchain_core.runnables.utils import AddableDict
 
 from langchain_core.documents import Document
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import (
     RunnableLambda,
     ConfigurableFieldSpec,
@@ -52,8 +48,7 @@ from langchain_core.runnables import (
 
 
 
-MAX_INPUT_TOKENS_GPT = 100000 # maximum input tokens is 128000 for gpt-4o
-MAX_INPUT_TOKENS_GEMINI = 150000 # maximum input tokens is 2M for gemini
+MAX_INPUT_TOKENS_GEMINI = 150000 # maximum input tokens is 1M+ for gemini
 
 def write_log(message, log_dir='log/error/'):
     """
@@ -238,14 +233,6 @@ class LangChainModuleLegacy():
     def clear_data(self):
         self.keep_input_output_data = {}
             
-    def get_model_company(self, model):
-        if 'gpt' in model:
-            self.config.company = 'openai'
-        elif 'gemini' in model:
-            self.config.company = 'google'
-        else:
-            assert False, 'Currently gpt or gemini can be used only, in get_model_company()'
-        
     def compute_token_price(self, model_name, input_tokens, output_tokens, tot_input_tokens, tot_output_tokens):
         # self.api_info
         input_price = None
@@ -303,66 +290,18 @@ class LangChainModuleLegacy():
     
     def init_llm(self, model=None):
         model = model if model is not None else self.config.model
-        self.get_model_company(model)
+        assert 'gemini' in model, f'Only Gemini models are supported: {model}, in init_llm()'
         if model in self.llm:
             return
-        if self.config.company == 'openai':
-            self.max_input_tokens = MAX_INPUT_TOKENS_GPT
-            self.llm[model] = ChatOpenAI(
-                model=model,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens_output,
-                timeout=None,
-                max_retries=2,
-                api_key=self.api_info['openai']['api_key'], 
-                organization=self.api_info['openai']['organization']
-                # base_url="...",
-                # other params...
-            )
-            
-        elif self.config.company == 'google':
-            self.max_input_tokens = MAX_INPUT_TOKENS_GEMINI
-            use_vertexai = True
-            if not use_vertexai:
-                from langchain_google_genai import HarmBlockThreshold, HarmCategory
-                self.llm[model] = ChatGoogleGenerativeAI(
-                    model=model,
-                    temperature=self.config.temperature,
-                    max_output_tokens=self.config.max_tokens_output,
-                    # top_p=0.8,
-                    # top_k=40,
-                    google_api_key=self.api_info['google']['api_key'],
-                    safety_settings={
-                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH
-                    },
-                    # retry_max_attempts=2,  # 현재 지원되지 않음
-                    # timeout=None,  # 현재 지원되지 않음
-                )
-            else:
-                from langchain_google_vertexai import HarmBlockThreshold, HarmCategory
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.api_info['google']['credentials']
-                self.llm[model] = ChatVertexAI(
-                    project=self.api_info['google']['project_id'],
-                    location=self.api_info['google']['region'],
-                    model=model,
-                    temperature=self.config.temperature,
-                    max_output_tokens=self.config.max_tokens_output,
-                    # top_p=0.8,
-                    # top_k=40,
-                    safety_settings={
-                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH
-                    },
-                    # retry_max_attempts=2,  # 현재 지원되지 않음
-                    # timeout=None,  # 현재 지원되지 않음
-                )
-        else:
-            assert False, 'company name should be openai or google, in init_llm()'
+        self.max_input_tokens = MAX_INPUT_TOKENS_GEMINI
+        # Vertex AI Express mode API key (AQ.…) -> vertexai=True + api_key
+        self.llm[model] = ChatGoogleGenerativeAI(
+            model=model,
+            api_key=self.api_info['google']['api_key'],
+            vertexai=True,
+            max_output_tokens=self.config.max_tokens_output,
+            max_retries=2,
+        )
     
     def get_last_msg(self):
         return self.last_msg
@@ -786,7 +725,7 @@ class LangChainModuleLegacy():
                 for k in prompt_chain_keys:
                     if k not in r:
                         continue
-                    tot_contents[k] += r[k].content
+                    tot_contents[k] += chunk_text(r[k].content)
                     
                     if stream_type == 'str':
                         # send the last message if it finished
@@ -800,14 +739,14 @@ class LangChainModuleLegacy():
                     elif stream_type == 'json':
                         assert False, 'stream_type == json has not implemented'
             else:
-                tot_contents += r.content
+                tot_contents += chunk_text(r.content)
                 # send the last message if it finished
                 if stream_type == 'str':
                     if len(r.response_metadata) > 0:
                         i = stream_step
                     _send_stream(i, class_instance, stream_step, tot_contents, prompt_chain_keys[0], output_dict)
                 elif stream_type == 'char':
-                    special_key_storage = _send_stream_char(r.content, special_key_storage)
+                    special_key_storage = _send_stream_char(chunk_text(r.content), special_key_storage)
                         
                 elif stream_type == 'json':
                     assert False, 'stream_type == json has not implemented'
@@ -1014,7 +953,7 @@ class LangChainModuleLegacy():
                     _output_dict = chain_settings[pk]['output_dict']
                     _output_type = chain_settings[pk]['output_type']
                     
-                    result[pk].content = remove_comma_before_bracket(result[pk].content)
+                    result[pk].content = remove_comma_before_bracket(chunk_text(result[pk].content))
                     # from langchain_core.exceptions import OutputParserException
                     # raise OutputParserException("테스트 에러 테스트")
 
@@ -1034,7 +973,7 @@ class LangChainModuleLegacy():
                 _output_dict = chain_settings[pk]['output_dict']
                 _output_type = chain_settings[pk]['output_type']
 
-                result.content = remove_comma_before_bracket(result.content)
+                result.content = remove_comma_before_bracket(chunk_text(result.content))
                 
                 parsed_output = _parser.parse(result.content)
                 # parse again by parse type (json or str)
@@ -1339,18 +1278,15 @@ class LangChainModuleLegacy():
         return parsed_result
     
     def unify_and_sum_metadata(self, response):
-        if self.config.company == 'openai':
-            pass
-        elif self.config.company == 'google':
-            if 'token_usage' in response.response_metadata:
-                return response
-            response.extra_metadata = response.response_metadata
-            prompt_tokens = response.usage_metadata['input_tokens']
-            completion_tokens = response.usage_metadata['output_tokens']
-            # total_tokens = response.usage_metadata['total_tokens']
-            response.response_metadata = {'token_usage': {'prompt_tokens': prompt_tokens, 
-                                                          'completion_tokens': completion_tokens}
-                                          }
+        if 'token_usage' in response.response_metadata:
+            return response
+        response.extra_metadata = response.response_metadata
+        prompt_tokens = response.usage_metadata['input_tokens']
+        completion_tokens = response.usage_metadata['output_tokens']
+        # total_tokens = response.usage_metadata['total_tokens']
+        response.response_metadata = {'token_usage': {'prompt_tokens': prompt_tokens, 
+                                                      'completion_tokens': completion_tokens}
+                                      }
 
         self.total_tokens['prompt_tokens'] += response.response_metadata['token_usage']['prompt_tokens']
         self.total_tokens['completion_tokens'] += response.response_metadata['token_usage']['completion_tokens']
@@ -1364,8 +1300,3 @@ def load_prompt_settings():
     chains = load_chain_setting('./settings/prompts/counsel/chains.json')
     # print(chains)
     return chains
-
-# test
-if __name__ == "__main__":
-    
-    pass

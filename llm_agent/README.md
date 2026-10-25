@@ -1,63 +1,22 @@
 # Requirements
-- python >= 3.9
-- pytorch for CPU only
-### pip install
-- openai
-- transformers
-- websockets
-- flask
-- gunicorn
-#### LangChain
-- pip install langchain-community==0.2.9 langchain==0.2.9 langchain-core==0.2.22 langchain-openai==0.1.10
-### Example
-```
-conda create -n openai python=3.9
-conda activate openai
-pip install openai transformers websockets pyinstaller flask flask_cors pip install Flask[async] gunicorn
-conda install pytorch cpuonly -c pytorch
-```
+- python >= 3.10
+- Google Cloud 콘솔(Vertex AI Studio)에서 발급한 API 키 (`AQ.` 로 시작, Vertex AI Express mode)
 
-### Extra modules for server
-sudo apt update
-sudo apt install git
-
-- anaconda (https://www.anaconda.com/products/individual)
+### Install (가상환경 권장)
 ```
-sudo wget https://repo.anaconda.com/archive/Anaconda3-2023.09-0-Linux-x86_64.sh
-bash [Anaconda*.sh]
-source ~/.bashrc
+python3 -m venv .venv && source .venv/bin/activate   # ensurepip가 없으면: pip install virtualenv && python3 -m virtualenv .venv
+pip install -r requirements.txt
 ```
 
 # Configuration
-- File name = [settings/config.json]
-[deprecated]
-
+- File name = `settings/config.json` (git에 포함되지 않음, 형식은 `settings/config(sample).json` 참고)
+```
+{ "google": { "api_key": "AQ...." }, "pricing": {...}, "usd_to_krw": 1450.0, ... }
+```
+- LLM은 `ChatGoogleGenerativeAI(vertexai=True, api_key=...)` 로 초기화합니다 (`agent_llm_stream.py`).
+- 모델명은 `settings/prompts/*/chains.json` 의 각 체인 `model` 과 `llm_handler.py` 의 `DEFAULT_MODEL` 에서 지정합니다 (현재 모두 `gemini-3.5-flash-lite`).
 
 # How to run
-### Flask (Single connection for test) [deprecated]
-```
-export FLASK_APP=server_flask.py
-flask run --host=0.0.0.0 --port=10000 
-
-# windows
-$env:FLASK_APP = "server_flask.py"
-flask run --host=0.0.0.0 --port=10000 
-```
-### Gunicorn [deprecated]
-```
-gunicorn -w 1 --bind 0.0.0.0:10000 server_flask:app &
-gunicorn -w 4 --bind 0.0.0.0:10000 server_flask:app &
-```
-- Close gunicorn process
-```
-ps -ef | grep gunicorn
-pgrep -f "gunicorn"
-kill [pid]
-```
-- Close all
-```
-pkill -f "gunicorn"
-```
 #### Kill processes
 ```
 # example port number = 15000

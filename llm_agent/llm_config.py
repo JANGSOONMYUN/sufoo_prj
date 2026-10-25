@@ -1,6 +1,6 @@
 class LLMConfig:
     def __init__(self, user_id='test', character_id="default", stream=False, tokenizer=None, 
-                 keep_dialog=None, company='openai', model='gpt-4o-mini', temperature=0.3, max_tokens_output=None, 
+                 keep_dialog=None, company='google', model='gemini-3.5-flash-lite', temperature=0.3, max_tokens_output=None, 
                  max_tokens_context=30000, api_key_path='./settings/config.json',
                  warmed_up_dialog=None, warmup_mode=False):
         self.user_id = user_id

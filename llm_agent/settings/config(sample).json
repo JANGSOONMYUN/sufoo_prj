@@ -1,15 +1,12 @@
 {
-    "openai": {
-        "api_key": "sk-blahblah",
-        "organization": "org-blahblah"
+    "google": {
+        "api_key": "AQ.blahblah (Vertex AI Express mode API key)"
     },
-    "google":{
-        "api_key": "blahblah",
-        "credentials": "settings/google_api/blahblah.json",
-        "project_id": "blahblah",
-        "region": "asia-northeast3"
+    "pricing": {
+        "gemini-3.5-flash": {"input": 0.0, "output": 0.0},
+        "gemini-3.5-flash-lite": {"input": 0.0, "output": 0.0}
     },
+    "usd_to_krw": 1450.0,
     "port": 15000,
-    "num_clients": 1000,
-    "models": ["gpt-4o", "gpt-4-turbo", "gpt-4-turbo-2024-04-09", "gpt-4-turbo-preview", "gpt-4-1106-preview", "gpt-4", "gpt-3.5-turbo-1106", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"]
+    "num_clients": 1000
 }

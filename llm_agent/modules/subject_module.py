@@ -31,8 +31,6 @@ def wrap_subjects(data):
         copied_template['title'] = s
         request.append(copied_template)
     
-    print('='*200)
-    print(request)
     
     # update chain
     chain_ptr = data['chain_ptr']

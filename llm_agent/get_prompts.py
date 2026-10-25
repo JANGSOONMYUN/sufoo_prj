@@ -448,8 +448,3 @@ def set_double_parallel_chain_builder(entire_chains, subject_list, chain_process
         print(f"Error: {e}")
         traceback.print_exc()
     return None
-
-if __name__ == "__main__":
-    chains = update_prompts_in_chains(json_path='/home/user/chatgpt_module_test/settings/prompts/tarot/chains_time_chat.json')
-    user_id, conversation_id = get_history_id(chains, 'test')
-    print(user_id, conversation_id )

@@ -7,17 +7,17 @@ from datetime import datetime
 import pytz
 from typing import Dict, Any, List, Optional
 
-import openai
-from openai import OpenAI
 from get_config import get_api_key
 from llm_config import LLMConfig
 
-from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_google_vertexai import ChatVertexAI
 from langchain_core.output_parsers import StrOutputParser
-from langchain.output_parsers import StructuredOutputParser, ResponseSchema
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
+try:
+    # langchain 1.x: 레거시 파서는 langchain-classic으로 이동
+    from langchain_classic.output_parsers import StructuredOutputParser, ResponseSchema
+except ImportError:
+    from langchain.output_parsers import StructuredOutputParser, ResponseSchema
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableParallel
 
@@ -41,7 +41,7 @@ class RequestItem(PydanticBaseModel):
     description: str = Field(default="", description="전체 요청에 대한 답변 서론 요약. 서론을 1~2줄로 간략히 작성")
     result: str = Field(default="", description="이 요청 항목에 대한 최종 결과입니다.")
     subject: List[SubResult] = Field(default_factory=list, description="이 요청 항목을 구성하는 세부 주제들의 목록입니다.")
-    representative_image_name: str = Field(default="", description="(선택) 이 요청 항목을 대표하는 이미지 이름 1개")
+    representative_image_name: str = Field(default="", description="(선택) 이 요청 항목을 대표하는 사진 속 구체적인 사물(음식/식재료/영양제 등) 이름 1개. 추상적인 단어나 문장 금지")
 
 
 class FinalOutput(PydanticBaseModel):
@@ -335,8 +335,33 @@ def load_prompt_file(file_path):
         print(f"프롬프트 파일 로드 실패: {file_path}, {e}")
         return ""
 
-MAX_INPUT_TOKENS_GPT = 100000
 MAX_INPUT_TOKENS_GEMINI = 150000
+
+
+def chunk_text(content) -> str:
+    """
+    스트림 chunk.content를 문자열로 변환.
+    Gemini 3.x는 content를 [{'type': 'text', 'text': '...'}, ...] 블록 리스트로 돌려주므로
+    text 블록만 이어 붙인다(thinking 등 다른 블록은 제외).
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get('type') == 'text':
+                parts.append(block.get('text', ''))
+        return ''.join(parts)
+    return ''
+
+def safe_error(e) -> str:
+    """예외를 로그에 남길 때 메시지 본문(LLM 출력·사용자 입력이 섞일 수 있음)은 빼고 종류와 위치만 남긴다."""
+    tb = traceback.extract_tb(e.__traceback__)
+    where = f"{os.path.basename(tb[-1].filename)}:{tb[-1].lineno}" if tb else "?"
+    return f"{type(e).__name__} at {where}"
+
 
 def write_log(message, log_dir='log/error/'):
     """간단한 로그 작성 함수"""
@@ -378,52 +403,22 @@ class LangChainModuleStream():
         self.max_input_tokens = 100000
         self.init_llm(self.config.model)
             
-    def get_model_company(self, model):
-        if 'gpt' in model:
-            self.config.company = 'openai'
-        elif 'gemini' in model:
-            self.config.company = 'google'
-        else:
-            assert False, 'Currently gpt or gemini can be used only'
-        
     def init_llm(self, model=None):
         model = model if model is not None else self.config.model
-        self.get_model_company(model)
+        assert 'gemini' in model, f'Only Gemini models are supported: {model}'
         if model in self.llm:
             return
-            
-        if self.config.company == 'openai':
-            self.max_input_tokens = MAX_INPUT_TOKENS_GPT
-            self.llm[model] = ChatOpenAI(
-                model=model,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens_output,
-                timeout=None,
-                max_retries=2,
-                api_key=self.api_info['openai']['api_key'], 
-                organization=self.api_info['openai']['organization']
-            )
-            
-        elif self.config.company == 'google':
-            self.max_input_tokens = MAX_INPUT_TOKENS_GEMINI
-            from langchain_google_vertexai import HarmBlockThreshold, HarmCategory
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.api_info['google']['credentials']
-            self.llm[model] = ChatVertexAI(
-                project=self.api_info['google']['project_id'],
-                location=self.api_info['google']['region'],
-                model=model,
-                temperature=self.config.temperature,
-                max_output_tokens=self.config.max_tokens_output,
-                safety_settings={
-                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH
-                },
-            )
-        else:
-            assert False, 'company name should be openai or google'
-    
+
+        self.max_input_tokens = MAX_INPUT_TOKENS_GEMINI
+        # Vertex AI Express mode API key (AQ.…) -> vertexai=True + api_key
+        self.llm[model] = ChatGoogleGenerativeAI(
+            model=model,
+            api_key=self.api_info['google']['api_key'],
+            vertexai=True,
+            max_output_tokens=self.config.max_tokens_output,
+            max_retries=2,
+        )
+
     def set_json_output(self, output_dict):
         """JSON 출력을 위한 파서 설정"""
         response_schemas = []
@@ -480,15 +475,16 @@ class LangChainModuleStream():
         content = ''
         
         for chunk in result:
-            if hasattr(chunk, 'content') and chunk.content:
-                content += chunk.content
+            text = chunk_text(getattr(chunk, 'content', ''))
+            if text:
+                content += text
                 # 콜백이 있으면 받은 내용을 즉시 전송
                 if callback:
                     callback_func = callback.get('func')
                     class_instance = callback.get('instance')
                     func_name = callback.get('func_name', 'default')
                     if callback_func:
-                        callback_func(chunk.content, class_instance, func_name)
+                        callback_func(text, class_instance, func_name)
         
         # 전체 내용을 AIMessage로 반환
         return AIMessage(content=content)
@@ -505,14 +501,15 @@ class LangChainModuleStream():
         post = _KeyedJSONStreamPostProcessor()
 
         for chunk in result:
-            if hasattr(chunk, 'content') and chunk.content:
-                content += chunk.content
+            text = chunk_text(getattr(chunk, 'content', ''))
+            if text:
+                content += text
                 if callback:
                     callback_func = callback.get('func')
                     class_instance = callback.get('instance')
                     func_name = callback.get('func_name', 'default')
                     if callback_func:
-                        for evt in post.feed(chunk.content):
+                        for evt in post.feed(text):
                             callback_func(json.dumps(evt, ensure_ascii=False), class_instance, func_name)
 
         return AIMessage(content=content)
@@ -588,7 +585,7 @@ class LangChainModuleStream():
                 result = chain.invoke(input_dict)
             
             # 결과 파싱
-            parsed_result = output_parser.parse(result.content)
+            parsed_result = output_parser.parse(chunk_text(result.content))
 
             # PydanticOutputParser를 쓴 경우 BaseModel -> dict로 변환(기존 코드 호환)
             if hasattr(parsed_result, 'model_dump'):
@@ -596,17 +593,13 @@ class LangChainModuleStream():
             elif hasattr(parsed_result, 'dict'):
                 parsed_result = parsed_result.dict()
             
-            print('='*100)
-            print(f'Parsed result: {parsed_result}')
-            print('='*100)
             
             return parsed_result
             
         except Exception as e:
             error_message = traceback.format_exc()
-            print(f"Error in run_simple_chain: {e}")
-            print(error_message)
-            write_log(message=f'{e}, \ntraceback: {error_message}')
+            print(f"Error in run_simple_chain: {safe_error(e)}")
+            write_log(message=f'run_simple_chain: {safe_error(e)}')
             
             # 콜백으로 에러 메시지 전송
             if callback:
@@ -633,12 +626,6 @@ class LangChainModuleStream():
             
         except Exception as e:
             error_message = traceback.format_exc()
-            print(f"Error in run_chain_tree: {e}")
-            print(error_message)
-            write_log(message=f'{e}, \ntraceback: {error_message}')
+            print(f"Error in run_chain_tree: {safe_error(e)}")
+            write_log(message=f'run_chain_tree: {safe_error(e)}')
             return {"error": "처리 중 오류가 발생했습니다."}
-
-
-# 테스트용 코드
-if __name__ == "__main__":
-    pass

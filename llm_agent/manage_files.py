@@ -108,8 +108,3 @@ def save_json_loop(parent_dir, file_name, json_msg, interval_sec=10000, create_s
     while True:
         save_statistics(parent_dir, file_name, json_msg, create_sub_dir)
         time.sleep(interval_sec)
-
-if __name__ == "__main__":
-    # Example usage
-    directory_path = '/path/to/your/directory'
-    remove_expired_folders(directory_path)

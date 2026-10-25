@@ -1,11 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from fastapi.responses import Response, StreamingResponse
 import asyncio
-import random
-import time
 import json
 import functools
+import threading
+import time
+import datetime
 from llm_handler import LLMHandler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -42,68 +43,72 @@ app.mount("/images", StaticFiles(directory=image_folder_path), name="images")
 # http://jsm0803.iptime.org:20000/images/1_local_image.jpg
 
 
-data = {
-    "question": "당뇨가 있는데 음식과 슈퍼푸드 그리고 영양제 추천해줘",
-    "additional_info_for_question": "",
-    "client_info": {
-        "gender": "남자",
-        "weight": "77.1",
-        "height": "177.5",
-        "bmi": "24.5",
-        "health_conditions": ["고혈압", "비만"],
-        "medications_being_taken": ["혈압약"],
-        "supplements_being_taken": ["종합비타민"],
-        "special_conditions": []
-    },
-    "request": [
-        {
-            "title": "",
-            "description": "",
-            "result": "",
-            "subject": [
-                {
-                    "sub_title": "",
-                    "sub_description": "",
-                    "sub_result": ""
-                },
-                {
-                    "sub_title": "",
-                    "sub_description": "",
-                    "sub_result": ""
-                }
-            ]
-        },
-        {
-            "title": "",
-            "description": "",
-            "result": "",
-            "subject": [
-                {
-                    "sub_title": "",
-                    "sub_description": "",
-                    "sub_result": ""
-                },
-                {
-                    "sub_title": "",
-                    "sub_description": "",
-                    "sub_result": ""
-                }
-            ]
-        }
-    ]
-}
-
 # Define the expected structure of the incoming JSON data
 class DataModel(BaseModel):
     content: str  # Adjust this field name and type as needed
 
 
-from concurrent.futures import ThreadPoolExecutor
-def run_sync_func():
-    import time
-    time.sleep(2)
-    return "Task completed"
+# ---------------------------------------------------------------------------
+# 호출 보호: 이 서버는 인터넷에 직접 열려 있고 AI(유료) 호출을 일으키므로
+#  - IP 별 분/시간 호출 제한, 하루 전체 호출 상한(비용 폭주 방지)
+#  - 요청 크기·구조 검증(과도하게 큰 요청 거부)
+# 환경변수로 조정: LLM_PER_MIN(기본 6), LLM_PER_HOUR(기본 40), LLM_DAILY_CAP(기본 500)
+# 제한은 서버 프로세스 메모리 기준이라 재시작하면 초기화된다.
+# ---------------------------------------------------------------------------
+LLM_PER_MIN = int(os.environ.get("LLM_PER_MIN", "6"))
+LLM_PER_HOUR = int(os.environ.get("LLM_PER_HOUR", "40"))
+LLM_DAILY_CAP = int(os.environ.get("LLM_DAILY_CAP", "500"))
+MAX_CONTENT_CHARS = 30000
 
+_rl_lock = threading.Lock()
+_rl_hits: Dict[str, list] = {}
+_daily = {"day": "", "count": 0}
+
+
+def _check_rate_limit(ip: str) -> None:
+    now = time.time()
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    with _rl_lock:
+        hits = [t for t in _rl_hits.get(ip, []) if now - t < 3600]
+        if len([t for t in hits if now - t < 60]) >= LLM_PER_MIN or len(hits) >= LLM_PER_HOUR:
+            raise HTTPException(status_code=429, detail="요청이 많습니다. 잠시 후 다시 시도해 주세요.")
+        if _daily["day"] != today:
+            _daily["day"], _daily["count"] = today, 0
+        if _daily["count"] >= LLM_DAILY_CAP:
+            raise HTTPException(status_code=429, detail="오늘 사용 가능한 횟수를 모두 사용했습니다. 내일 다시 이용해 주세요.")
+        hits.append(now)
+        _rl_hits[ip] = hits
+        _daily["count"] += 1
+        if len(_rl_hits) > 5000:
+            for k in [k for k, v in _rl_hits.items() if not v or now - v[-1] > 3600]:
+                _rl_hits.pop(k, None)
+
+
+def _guard(request: Request, data: "DataModel") -> Dict[str, Any]:
+    """호출 제한 -> 크기 검사 -> 구조 검사 후 파싱된 payload 를 돌려준다."""
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+    if len(data.content) > MAX_CONTENT_CHARS:
+        raise HTTPException(status_code=413, detail="요청이 너무 큽니다.")
+    try:
+        payload = json.loads(data.content)
+    except Exception:
+        raise HTTPException(status_code=422, detail="잘못된 요청입니다.")
+    if not isinstance(payload, dict) or not isinstance(payload.get("question"), str) or len(payload["question"]) > 500:
+        raise HTTPException(status_code=422, detail="잘못된 요청입니다.")
+    req = payload.get("request")
+    if not isinstance(req, list) or not (1 <= len(req) <= 8) or not all(isinstance(r, dict) for r in req):
+        raise HTTPException(status_code=422, detail="잘못된 요청입니다.")
+    for r in req:
+        subj = r.get("subject", [])
+        if not isinstance(subj, list) or len(subj) > 8:
+            raise HTTPException(status_code=422, detail="잘못된 요청입니다.")
+    if not isinstance(payload.get("client_info", {}), dict):
+        raise HTTPException(status_code=422, detail="잘못된 요청입니다.")
+    return payload
+
+
+from concurrent.futures import ThreadPoolExecutor
 def run_llm(data, selection='ver1'):
     llm = LLMHandler()
     llm_result = llm.handle_sufoo(data)
@@ -111,15 +116,11 @@ def run_llm(data, selection='ver1'):
     return llm_result
 
 @app.post("/llm")
-async def process_sync_llm(data: DataModel):
+async def process_sync_llm(data: DataModel, request: Request):
     loop = asyncio.get_running_loop()
-    print('-----')
-    print(type(data))
-    print(type(data.content))
-    print(data)
-    json_data = json.loads(data.content)
+    payload = _guard(request, data)
     # run_llm 함수를 partial을 사용하여 data와 함께 호출
-    run_llm_partial = functools.partial(run_llm, json.loads(data.content))
+    run_llm_partial = functools.partial(run_llm, payload)
     # ThreadPoolExecutor를 사용하여 동기 메서드 실행
     with ThreadPoolExecutor() as pool:
         result = await loop.run_in_executor(pool, run_llm_partial)
@@ -127,7 +128,7 @@ async def process_sync_llm(data: DataModel):
     return result
 
 @app.post("/llm_ver3")
-async def process_sync_llm_ver3(data: DataModel):
+async def process_sync_llm_ver3(data: DataModel, request: Request):
     """
     진짜 스트리밍(SSE) 엔드포인트.
 
@@ -138,7 +139,7 @@ async def process_sync_llm_ver3(data: DataModel):
       - event: error  (data: <text>)
     """
     loop = asyncio.get_running_loop()
-    payload = json.loads(data.content)
+    payload = _guard(request, data)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         queue: asyncio.Queue = asyncio.Queue()
@@ -341,12 +342,12 @@ async def process_sync_llm_ver3(data: DataModel):
 '''
 # with ssl
 uvicorn server_fastapi:app --host 0.0.0.0 --port 20000 \
-  --ssl-keyfile=/home/jsm/ssl_keys/privkey.pem \
-  --ssl-certfile=/home/jsm/ssl_keys/fullchain.pem \
+  --ssl-keyfile=/home/jsm/ssl_keys/fodoit/privkey.pem \
+  --ssl-certfile=/home/jsm/ssl_keys/fodoit/fullchain.pem \
   --ssl-ciphers="HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA"
 
 uvicorn server_fastapi:app --host 0.0.0.0 --port 20000 \
-  --ssl-keyfile=/home/jsm/ssl_keys/privkey.pem \
-  --ssl-certfile=/home/jsm/ssl_keys/fullchain.pem \
+  --ssl-keyfile=/home/jsm/ssl_keys/fodoit/privkey.pem \
+  --ssl-certfile=/home/jsm/ssl_keys/fodoit/fullchain.pem \
   --ssl-ciphers='HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA'
 '''

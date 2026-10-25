@@ -2,3 +2,11 @@ node_modules
 __pycache__
 suofoo_front-app/public
 venv
+
+# 커밋하면 안 되는 것
+.venv
+core
+core.*
+*.tar.gz
+.env
+.env.*

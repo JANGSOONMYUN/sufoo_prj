@@ -2,38 +2,30 @@ import os
 import json
 import functools
 from typing import Dict, Any
-from langchain_google_vertexai import ChatVertexAI, HarmBlockThreshold, HarmCategory
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from models import create_state_from_json
 from workflow import dynamic_node, parallel_dynamic_node, user_input_node
 from config import load_workflows, extract_variables_and_types
 from tools import tool_node
 
-def init_llm(api_info: Dict[str, Any]) -> ChatVertexAI:
+def init_llm(api_info: Dict[str, Any]) -> ChatGoogleGenerativeAI:
     """
-    Vertex AI LLM을 초기화합니다.
+    Gemini LLM을 초기화합니다 (Vertex AI Express mode API 키 사용).
 
     Args:
-        api_info: API 설정 정보
+        api_info: API 설정 정보 (api_info['google']['api_key'])
 
     Returns:
-        ChatVertexAI: 초기화된 LLM 인스턴스
+        ChatGoogleGenerativeAI: 초기화된 LLM 인스턴스
     """
-    # os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = api_info['google']['credentials']
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/home/user/llm_test_15050/settings/google_api/gen-lang-client-0942875887-4088db77d287.json'
-    return ChatVertexAI(
-        project=api_info['google']['project_id'],
-        location=api_info['google']['region'],
-        model="gemini-2.0-flash",
-        safety_settings={
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH
-        }
+    return ChatGoogleGenerativeAI(
+        model="gemini-3.5-flash-lite",
+        api_key=api_info['google']['api_key'],
+        vertexai=True,
     )
 
-def setup_workflow(llm: ChatVertexAI, workflows: Dict[str, Any]) -> StateGraph:
+def setup_workflow(llm: ChatGoogleGenerativeAI, workflows: Dict[str, Any]) -> StateGraph:
     """
     워크플로우를 설정합니다.
 
@@ -155,17 +147,3 @@ def run_chatbot(user_message: str, api_info: Dict[str, Any]) -> Dict[str, Any]:
     # 챗봇 실행
     result = app.invoke(initial_state)
     return result
-
-if __name__ == "__main__":
-    # API 설정 로드
-    config_path = '/home/user/llm_test_15050/settings/config.json'
-    with open(config_path, 'r') as f:
-        api_info = json.load(f)
-
-    # 챗봇 실행
-    user_message = '금전운, 연애운'
-    result = run_chatbot(user_message, api_info)
-
-    # 결과 출력
-    print("Bot:", result["bot_response"])
-    print("Bot:", result["subject_list"]) 

@@ -7,7 +7,7 @@
     "stream_report": {
         "return_func_name": "stream_report",
         "type": "prompts",
-        "model": "gemini-2.5-flash-lite",
+        "model": "gemini-3.5-flash-lite",
         "instructions_data": ["normal/report/instructions.txt"],
         "prompts_data": ["normal/report/prompts.txt"],
         "input_dict": {"information": null},
